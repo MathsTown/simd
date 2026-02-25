@@ -312,6 +312,35 @@ inline static FallbackFloat64 blend(const FallbackFloat64 if_false, const Fallba
 #if MT_SIMD_ARCH_X64
 #include <immintrin.h>
 
+#if MT_SIMD_USE_PORTABLE_X86_SHIMS && MT_USE_SLEEF
+	#if !defined(__has_include)
+		#error "MT_USE_SLEEF requires __has_include support."
+	#endif
+	#if __has_include(<sleefinline_sse2.h>)
+		#include <sleefinline_sse2.h>
+		#define MT_F64_SLEEF_128_SUFFIX_SIMPLE _sse2
+		#define MT_F64_SLEEF_128_SUFFIX_ACC sse2
+	#elif MT_SIMD_ALLOW_LEVEL3_TYPES && __has_include(<sleefinline_avx2128.h>)
+		#include <sleefinline_avx2128.h>
+		#define MT_F64_SLEEF_128_SUFFIX_SIMPLE _avx2128
+		#define MT_F64_SLEEF_128_SUFFIX_ACC avx2128
+	#else
+		#error "MT_USE_SLEEF requires sleefinline_sse2.h, or sleefinline_avx2128.h when level 3 types are enabled."
+	#endif
+	#if MT_SIMD_ALLOW_LEVEL3_TYPES
+		#if !__has_include(<sleefinline_avx2.h>)
+			#error "MT_USE_SLEEF with AVX2 requires sleefinline_avx2.h in the include path."
+		#endif
+		#include <sleefinline_avx2.h>
+	#endif
+	#if MT_SIMD_ALLOW_LEVEL4_TYPES
+		#if !__has_include(<sleefinline_avx512f.h>)
+			#error "MT_USE_SLEEF with AVX-512 requires sleefinline_avx512f.h in the include path."
+		#endif
+		#include <sleefinline_avx512f.h>
+	#endif
+#endif
+
 namespace mt::simd_detail_f64 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline double lane_get(__m128d v, int i) noexcept {
@@ -377,6 +406,7 @@ namespace mt::simd_detail_f64 {
 #endif
 	}
 
+#if MT_SIMD_USE_PORTABLE_X86_SHIMS
 	template <typename Fn>
 	inline __m128d map_unary(__m128d v, Fn fn) {
 		alignas(16) double in[2], out[2];
@@ -424,16 +454,18 @@ namespace mt::simd_detail_f64 {
 		std::memcpy(&out_v, out, sizeof(out_v));
 		return out_v;
 	}
+#endif
 
-#define MT_F64_UNARY(name, expr) \
-	inline __m128d name##_pd(__m128d v) { return map_unary(v, [](double x) { return (expr); }); } \
-	inline __m256d name##_pd(__m256d v) { return map_unary(v, [](double x) { return (expr); }); } \
-	inline __m512d name##_pd(__m512d v) { return map_unary(v, [](double x) { return (expr); }); }
+#if MT_SIMD_USE_PORTABLE_X86_SHIMS && MT_USE_LIBC_FALLBACK
+	#define MT_F64_UNARY(name, expr) \
+		inline __m128d name##_pd(__m128d v) { return map_unary(v, [](double x) { return (expr); }); } \
+		inline __m256d name##_pd(__m256d v) { return map_unary(v, [](double x) { return (expr); }); } \
+		inline __m512d name##_pd(__m512d v) { return map_unary(v, [](double x) { return (expr); }); }
 
-#define MT_F64_BINARY(name, expr) \
-	inline __m128d name##_pd(__m128d a, __m128d b) { return map_binary(a, b, [](double x, double y) { return (expr); }); } \
-	inline __m256d name##_pd(__m256d a, __m256d b) { return map_binary(a, b, [](double x, double y) { return (expr); }); } \
-	inline __m512d name##_pd(__m512d a, __m512d b) { return map_binary(a, b, [](double x, double y) { return (expr); }); }
+	#define MT_F64_BINARY(name, expr) \
+		inline __m128d name##_pd(__m128d a, __m128d b) { return map_binary(a, b, [](double x, double y) { return (expr); }); } \
+		inline __m256d name##_pd(__m256d a, __m256d b) { return map_binary(a, b, [](double x, double y) { return (expr); }); } \
+		inline __m512d name##_pd(__m512d a, __m512d b) { return map_binary(a, b, [](double x, double y) { return (expr); }); }
 
 	MT_F64_UNARY(trunc, std::trunc(x))
 	MT_F64_UNARY(round, std::round(x))
@@ -467,8 +499,120 @@ namespace mt::simd_detail_f64 {
 	MT_F64_BINARY(hypot, std::hypot(x, y))
 	MT_F64_BINARY(atan2, std::atan2(x, y))
 
-#undef MT_F64_UNARY
-#undef MT_F64_BINARY
+	#undef MT_F64_UNARY
+	#undef MT_F64_BINARY
+#endif
+
+#if MT_SIMD_USE_PORTABLE_X86_SHIMS && MT_USE_SLEEF
+	#if MT_SIMD_ALLOW_LEVEL3_TYPES
+		#define MT_F64_SELECT_256(sleef_expr, fallback_expr) (sleef_expr)
+	#else
+		#define MT_F64_SELECT_256(sleef_expr, fallback_expr) (fallback_expr)
+	#endif
+	#if MT_SIMD_ALLOW_LEVEL4_TYPES
+		#define MT_F64_SELECT_512(sleef_expr, fallback_expr) (sleef_expr)
+	#else
+		#define MT_F64_SELECT_512(sleef_expr, fallback_expr) (fallback_expr)
+	#endif
+	#define MT_F64_JOIN2(a, b) a##b
+	#define MT_F64_JOIN(a, b) MT_F64_JOIN2(a, b)
+
+	#define MT_F64_SLEEF_UNARY(name, f2, f4, f8, fallback_expr) \
+		inline __m128d name##_pd(__m128d v) { return f2(v); } \
+		inline __m256d name##_pd(__m256d v) { return MT_F64_SELECT_256(f4(v), map_unary(v, [](double x) { return (fallback_expr); })); } \
+		inline __m512d name##_pd(__m512d v) { return MT_F64_SELECT_512(f8(v), map_unary(v, [](double x) { return (fallback_expr); })); }
+
+	#define MT_F64_SLEEF_BINARY(name, f2, f4, f8, fallback_expr) \
+		inline __m128d name##_pd(__m128d a, __m128d b) { return f2(a, b); } \
+		inline __m256d name##_pd(__m256d a, __m256d b) { return MT_F64_SELECT_256(f4(a, b), map_binary(a, b, [](double x, double y) { return (fallback_expr); })); } \
+		inline __m512d name##_pd(__m512d a, __m512d b) { return MT_F64_SELECT_512(f8(a, b), map_binary(a, b, [](double x, double y) { return (fallback_expr); })); }
+
+	MT_F64_SLEEF_UNARY(trunc, MT_F64_JOIN(Sleef_truncd2, MT_F64_SLEEF_128_SUFFIX_SIMPLE), Sleef_truncd4_avx2, Sleef_truncd8_avx512f, std::trunc(x))
+	MT_F64_SLEEF_UNARY(round, MT_F64_JOIN(Sleef_roundd2, MT_F64_SLEEF_128_SUFFIX_SIMPLE), Sleef_roundd4_avx2, Sleef_roundd8_avx512f, std::round(x))
+	MT_F64_SLEEF_UNARY(floor, MT_F64_JOIN(Sleef_floord2, MT_F64_SLEEF_128_SUFFIX_SIMPLE), Sleef_floord4_avx2, Sleef_floord8_avx512f, std::floor(x))
+	MT_F64_SLEEF_UNARY(ceil, MT_F64_JOIN(Sleef_ceild2, MT_F64_SLEEF_128_SUFFIX_SIMPLE), Sleef_ceild4_avx2, Sleef_ceild8_avx512f, std::ceil(x))
+	MT_F64_SLEEF_UNARY(exp, MT_F64_JOIN(Sleef_expd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_expd4_u10avx2, Sleef_expd8_u10avx512f, std::exp(x))
+	MT_F64_SLEEF_UNARY(exp2, MT_F64_JOIN(Sleef_exp2d2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_exp2d4_u10avx2, Sleef_exp2d8_u10avx512f, std::exp2(x))
+	MT_F64_SLEEF_UNARY(exp10, MT_F64_JOIN(Sleef_exp10d2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_exp10d4_u10avx2, Sleef_exp10d8_u10avx512f, std::pow(10.0, x))
+	MT_F64_SLEEF_UNARY(expm1, MT_F64_JOIN(Sleef_expm1d2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_expm1d4_u10avx2, Sleef_expm1d8_u10avx512f, std::expm1(x))
+	MT_F64_SLEEF_UNARY(log, MT_F64_JOIN(Sleef_logd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_logd4_u10avx2, Sleef_logd8_u10avx512f, std::log(x))
+	MT_F64_SLEEF_UNARY(log1p, MT_F64_JOIN(Sleef_log1pd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_log1pd4_u10avx2, Sleef_log1pd8_u10avx512f, std::log1p(x))
+	MT_F64_SLEEF_UNARY(log2, MT_F64_JOIN(Sleef_log2d2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_log2d4_u10avx2, Sleef_log2d8_u10avx512f, std::log2(x))
+	MT_F64_SLEEF_UNARY(log10, MT_F64_JOIN(Sleef_log10d2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_log10d4_u10avx2, Sleef_log10d8_u10avx512f, std::log10(x))
+	MT_F64_SLEEF_UNARY(cbrt, MT_F64_JOIN(Sleef_cbrtd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_cbrtd4_u10avx2, Sleef_cbrtd8_u10avx512f, std::cbrt(x))
+	MT_F64_SLEEF_UNARY(sin, MT_F64_JOIN(Sleef_sind2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_sind4_u10avx2, Sleef_sind8_u10avx512f, std::sin(x))
+	MT_F64_SLEEF_UNARY(cos, MT_F64_JOIN(Sleef_cosd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_cosd4_u10avx2, Sleef_cosd8_u10avx512f, std::cos(x))
+	MT_F64_SLEEF_UNARY(tan, MT_F64_JOIN(Sleef_tand2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_tand4_u10avx2, Sleef_tand8_u10avx512f, std::tan(x))
+	MT_F64_SLEEF_UNARY(asin, MT_F64_JOIN(Sleef_asind2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_asind4_u10avx2, Sleef_asind8_u10avx512f, std::asin(x))
+	MT_F64_SLEEF_UNARY(acos, MT_F64_JOIN(Sleef_acosd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_acosd4_u10avx2, Sleef_acosd8_u10avx512f, std::acos(x))
+	MT_F64_SLEEF_UNARY(atan, MT_F64_JOIN(Sleef_atand2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_atand4_u10avx2, Sleef_atand8_u10avx512f, std::atan(x))
+	MT_F64_SLEEF_UNARY(sinh, MT_F64_JOIN(Sleef_sinhd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_sinhd4_u10avx2, Sleef_sinhd8_u10avx512f, std::sinh(x))
+	MT_F64_SLEEF_UNARY(cosh, MT_F64_JOIN(Sleef_coshd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_coshd4_u10avx2, Sleef_coshd8_u10avx512f, std::cosh(x))
+	MT_F64_SLEEF_UNARY(tanh, MT_F64_JOIN(Sleef_tanhd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_tanhd4_u10avx2, Sleef_tanhd8_u10avx512f, std::tanh(x))
+	MT_F64_SLEEF_UNARY(asinh, MT_F64_JOIN(Sleef_asinhd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_asinhd4_u10avx2, Sleef_asinhd8_u10avx512f, std::asinh(x))
+	MT_F64_SLEEF_UNARY(acosh, MT_F64_JOIN(Sleef_acoshd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_acoshd4_u10avx2, Sleef_acoshd8_u10avx512f, std::acosh(x))
+	MT_F64_SLEEF_UNARY(atanh, MT_F64_JOIN(Sleef_atanhd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_atanhd4_u10avx2, Sleef_atanhd8_u10avx512f, std::atanh(x))
+	MT_F64_SLEEF_BINARY(pow, MT_F64_JOIN(Sleef_powd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_powd4_u10avx2, Sleef_powd8_u10avx512f, std::pow(x, y))
+	MT_F64_SLEEF_BINARY(hypot, MT_F64_JOIN(Sleef_hypotd2_u05, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_hypotd4_u05avx2, Sleef_hypotd8_u05avx512f, std::hypot(x, y))
+	MT_F64_SLEEF_BINARY(atan2, MT_F64_JOIN(Sleef_atan2d2_u10, MT_F64_SLEEF_128_SUFFIX_ACC), Sleef_atan2d4_u10avx2, Sleef_atan2d8_u10avx512f, std::atan2(x, y))
+
+	// Degree variants keep library behavior: convert to radians before trig.
+	constexpr double degrees_to_radians = 3.14159265358979323846 / 180.0;
+	inline __m128d sind_pd(__m128d v) {
+		return MT_F64_JOIN(Sleef_sind2_u10, MT_F64_SLEEF_128_SUFFIX_ACC)(_mm_mul_pd(v, _mm_set1_pd(degrees_to_radians)));
+	}
+	inline __m256d sind_pd(__m256d v) {
+		return MT_F64_SELECT_256(
+			Sleef_sind4_u10avx2(_mm256_mul_pd(v, _mm256_set1_pd(degrees_to_radians))),
+			map_unary(v, [](double x) { return std::sin(x * degrees_to_radians); })
+		);
+	}
+	inline __m512d sind_pd(__m512d v) {
+		return MT_F64_SELECT_512(
+			Sleef_sind8_u10avx512f(_mm512_mul_pd(v, _mm512_set1_pd(degrees_to_radians))),
+			map_unary(v, [](double x) { return std::sin(x * degrees_to_radians); })
+		);
+	}
+	inline __m128d cosd_pd(__m128d v) {
+		return MT_F64_JOIN(Sleef_cosd2_u10, MT_F64_SLEEF_128_SUFFIX_ACC)(_mm_mul_pd(v, _mm_set1_pd(degrees_to_radians)));
+	}
+	inline __m256d cosd_pd(__m256d v) {
+		return MT_F64_SELECT_256(
+			Sleef_cosd4_u10avx2(_mm256_mul_pd(v, _mm256_set1_pd(degrees_to_radians))),
+			map_unary(v, [](double x) { return std::cos(x * degrees_to_radians); })
+		);
+	}
+	inline __m512d cosd_pd(__m512d v) {
+		return MT_F64_SELECT_512(
+			Sleef_cosd8_u10avx512f(_mm512_mul_pd(v, _mm512_set1_pd(degrees_to_radians))),
+			map_unary(v, [](double x) { return std::cos(x * degrees_to_radians); })
+		);
+	}
+	inline __m128d tand_pd(__m128d v) {
+		return MT_F64_JOIN(Sleef_tand2_u10, MT_F64_SLEEF_128_SUFFIX_ACC)(_mm_mul_pd(v, _mm_set1_pd(degrees_to_radians)));
+	}
+	inline __m256d tand_pd(__m256d v) {
+		return MT_F64_SELECT_256(
+			Sleef_tand4_u10avx2(_mm256_mul_pd(v, _mm256_set1_pd(degrees_to_radians))),
+			map_unary(v, [](double x) { return std::tan(x * degrees_to_radians); })
+		);
+	}
+	inline __m512d tand_pd(__m512d v) {
+		return MT_F64_SELECT_512(
+			Sleef_tand8_u10avx512f(_mm512_mul_pd(v, _mm512_set1_pd(degrees_to_radians))),
+			map_unary(v, [](double x) { return std::tan(x * degrees_to_radians); })
+		);
+	}
+
+	#undef MT_F64_SLEEF_UNARY
+	#undef MT_F64_SLEEF_BINARY
+	#undef MT_F64_SELECT_256
+	#undef MT_F64_SELECT_512
+	#undef MT_F64_JOIN2
+	#undef MT_F64_JOIN
+	#undef MT_F64_SLEEF_128_SUFFIX_SIMPLE
+	#undef MT_F64_SLEEF_128_SUFFIX_ACC
+#endif
 }
 
 #if MT_SIMD_USE_PORTABLE_X86_SHIMS

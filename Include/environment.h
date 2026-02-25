@@ -48,6 +48,40 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	#define MT_SIMD_USE_PORTABLE_X86_SHIMS 1
 #endif
 
+// Math backend selection for transcendental SIMD functions.
+// If none is specified, default to SVML on MSVC and libc fallback elsewhere.
+#if !defined(MT_USE_SVML) && !defined(MT_USE_SLEEF) && !defined(MT_USE_LIBC_FALLBACK)
+	#if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
+		#define MT_USE_SVML 1
+	#else
+		#define MT_USE_LIBC_FALLBACK 1
+	#endif
+#endif
+
+#ifndef MT_USE_SVML
+	#define MT_USE_SVML 0
+#endif
+
+#ifndef MT_USE_SLEEF
+	#define MT_USE_SLEEF 0
+#endif
+
+#ifndef MT_USE_LIBC_FALLBACK
+	#define MT_USE_LIBC_FALLBACK 0
+#endif
+
+#if ((MT_USE_SVML ? 1 : 0) + (MT_USE_SLEEF ? 1 : 0) + (MT_USE_LIBC_FALLBACK ? 1 : 0)) != 1
+	#error "Exactly one math backend must be enabled: MT_USE_SVML, MT_USE_SLEEF, or MT_USE_LIBC_FALLBACK."
+#endif
+
+#if MT_USE_SVML && !MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
+	#error "MT_USE_SVML is only supported with MSVC."
+#endif
+
+#if MT_USE_SLEEF && MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
+	#error "MT_USE_SLEEF is intended for GCC/Clang builds."
+#endif
+
 namespace mt::environment {
 
 
@@ -170,6 +204,11 @@ namespace mt::environment {
 #else
 	constexpr static bool compiler_has_fma = false;
 #endif
+
+	// Selected math backend.
+	constexpr static bool use_svml = (MT_USE_SVML != 0);
+	constexpr static bool use_sleef = (MT_USE_SLEEF != 0);
+	constexpr static bool use_libc_fallback = (MT_USE_LIBC_FALLBACK != 0);
 
 
 // Compile-time gating for full SIMD type declarations.

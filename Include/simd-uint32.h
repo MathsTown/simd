@@ -580,6 +580,9 @@ inline static Simd256UInt32 operator<<(const Simd256UInt32& lhs, int bits) noexc
 inline static Simd256UInt32 operator>>(const Simd256UInt32& lhs, int bits) noexcept { return Simd256UInt32(_mm256_srli_epi32(lhs.v, bits)); }
 inline static Simd256UInt32 rotl(const Simd256UInt32& a, int bits) {
 	const unsigned int n = static_cast<unsigned int>(bits) & 31u;
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
+		return Simd256UInt32(_mm256_rolv_epi32(a.v, _mm256_set1_epi32(static_cast<int>(n))));
+	}
 	if (n == 0u) {
 		return a;
 	}
@@ -587,6 +590,9 @@ inline static Simd256UInt32 rotl(const Simd256UInt32& a, int bits) {
 };
 inline static Simd256UInt32 rotr(const Simd256UInt32& a, int bits) {
 	const unsigned int n = static_cast<unsigned int>(bits) & 31u;
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
+		return Simd256UInt32(_mm256_rorv_epi32(a.v, _mm256_set1_epi32(static_cast<int>(n))));
+	}
 	if (n == 0u) {
 		return a;
 	}

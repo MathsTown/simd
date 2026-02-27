@@ -703,12 +703,10 @@ struct Simd128Int32 {
 			return *this;
 		}
 		else {
-			// SSE2 fallback: scalar lane multiply preserves signed semantics.
-			const auto m3 = mt::simd_detail_i32::lane_get(v, 3) * mt::simd_detail_i32::lane_get(rhs.v, 3);
-			const auto m2 = mt::simd_detail_i32::lane_get(v, 2) * mt::simd_detail_i32::lane_get(rhs.v, 2);
-			const auto m1 = mt::simd_detail_i32::lane_get(v, 1) * mt::simd_detail_i32::lane_get(rhs.v, 1);
-			const auto m0 = mt::simd_detail_i32::lane_get(v, 0) * mt::simd_detail_i32::lane_get(rhs.v, 0);
-			v = _mm_set_epi32(m3, m2, m1, m0);
+			// SSE2 fallback: rebuild 4x low 32-bit products (same low bits for signed/unsigned multiply).
+			const auto result02 = _mm_mul_epu32(v, rhs.v);
+			const auto result13 = _mm_mul_epu32(_mm_srli_si128(v, 4), _mm_srli_si128(rhs.v, 4));
+			v = _mm_unpacklo_epi32(_mm_shuffle_epi32(result02, _MM_SHUFFLE(0, 0, 2, 0)), _mm_shuffle_epi32(result13, _MM_SHUFFLE(0, 0, 2, 0)));
 			return *this;
 		}
 	}

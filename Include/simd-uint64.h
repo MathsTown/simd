@@ -593,6 +593,9 @@ inline static Simd256UInt64 operator<<(const Simd256UInt64& lhs, int bits) noexc
 inline static Simd256UInt64 operator>>(const Simd256UInt64& lhs, int bits) noexcept { return Simd256UInt64(_mm256_srli_epi64(lhs.v, bits)); }
 inline static Simd256UInt64 rotl(const Simd256UInt64& a, int bits) {
 	const unsigned int n = static_cast<unsigned int>(bits) & 63u;
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
+		return Simd256UInt64(_mm256_rolv_epi64(a.v, _mm256_set1_epi64x(static_cast<int64_t>(n))));
+	}
 	if (n == 0u) {
 		return a;
 	}
@@ -600,6 +603,9 @@ inline static Simd256UInt64 rotl(const Simd256UInt64& a, int bits) {
 };
 inline static Simd256UInt64 rotr(const Simd256UInt64& a, int bits) {
 	const unsigned int n = static_cast<unsigned int>(bits) & 63u;
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
+		return Simd256UInt64(_mm256_rorv_epi64(a.v, _mm256_set1_epi64x(static_cast<int64_t>(n))));
+	}
 	if (n == 0u) {
 		return a;
 	}
@@ -612,11 +618,12 @@ inline static Simd256UInt64 min(Simd256UInt64 a, Simd256UInt64 b) noexcept {
 		return Simd256UInt64(_mm256_min_epu64(a.v, b.v));
 	}
 	else {
-		const auto m3 = std::min(mt::simd_detail_u64::lane_get(a.v, 3), mt::simd_detail_u64::lane_get(b.v, 3));
-		const auto m2 = std::min(mt::simd_detail_u64::lane_get(a.v, 2), mt::simd_detail_u64::lane_get(b.v, 2));
-		const auto m1 = std::min(mt::simd_detail_u64::lane_get(a.v, 1), mt::simd_detail_u64::lane_get(b.v, 1));
-		const auto m0 = std::min(mt::simd_detail_u64::lane_get(a.v, 0), mt::simd_detail_u64::lane_get(b.v, 0));
-		return Simd256UInt64(_mm256_set_epi64x(m3, m2, m1, m0));
+		const auto sign = _mm256_set1_epi64x(static_cast<int64_t>(0x8000000000000000ull));
+		const auto a_bias = _mm256_xor_si256(a.v, sign);
+		const auto b_bias = _mm256_xor_si256(b.v, sign);
+		const auto pick_b = _mm256_cmpgt_epi64(a_bias, b_bias); // a > b (unsigned)
+		const auto keep_a = _mm256_xor_si256(pick_b, _mm256_set1_epi64x(-1));
+		return Simd256UInt64(_mm256_or_si256(_mm256_and_si256(a.v, keep_a), _mm256_and_si256(b.v, pick_b)));
 	}
 }
 inline static Simd256UInt64 max(Simd256UInt64 a, Simd256UInt64 b) noexcept {
@@ -624,11 +631,12 @@ inline static Simd256UInt64 max(Simd256UInt64 a, Simd256UInt64 b) noexcept {
 		return Simd256UInt64(_mm256_max_epu64(a.v, b.v));
 	}
 	else {
-		const auto m3 = std::max(mt::simd_detail_u64::lane_get(a.v, 3), mt::simd_detail_u64::lane_get(b.v, 3));
-		const auto m2 = std::max(mt::simd_detail_u64::lane_get(a.v, 2), mt::simd_detail_u64::lane_get(b.v, 2));
-		const auto m1 = std::max(mt::simd_detail_u64::lane_get(a.v, 1), mt::simd_detail_u64::lane_get(b.v, 1));
-		const auto m0 = std::max(mt::simd_detail_u64::lane_get(a.v, 0), mt::simd_detail_u64::lane_get(b.v, 0));
-		return Simd256UInt64(_mm256_set_epi64x(m3, m2, m1, m0));
+		const auto sign = _mm256_set1_epi64x(static_cast<int64_t>(0x8000000000000000ull));
+		const auto a_bias = _mm256_xor_si256(a.v, sign);
+		const auto b_bias = _mm256_xor_si256(b.v, sign);
+		const auto pick_a = _mm256_cmpgt_epi64(a_bias, b_bias); // a > b (unsigned)
+		const auto keep_b = _mm256_xor_si256(pick_a, _mm256_set1_epi64x(-1));
+		return Simd256UInt64(_mm256_or_si256(_mm256_and_si256(a.v, pick_a), _mm256_and_si256(b.v, keep_b)));
 	}
 }
 
@@ -811,6 +819,14 @@ inline static Simd128UInt64 min(Simd128UInt64 a, Simd128UInt64 b) noexcept {
 	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512dq) {
 		return Simd128UInt64(_mm_min_epu64(a.v, b.v)); //AVX-512
 	}
+	else if constexpr (mt::environment::compiler_has_sse4_2) {
+		const auto sign = _mm_set1_epi64x(static_cast<int64_t>(0x8000000000000000ull));
+		const auto a_bias = _mm_xor_si128(a.v, sign);
+		const auto b_bias = _mm_xor_si128(b.v, sign);
+		const auto pick_b = _mm_cmpgt_epi64(a_bias, b_bias); // a > b (unsigned)
+		const auto keep_a = _mm_xor_si128(pick_b, _mm_set1_epi64x(-1));
+		return Simd128UInt64(_mm_or_si128(_mm_and_si128(a.v, keep_a), _mm_and_si128(b.v, pick_b)));
+	}
 	else {
 		//No min/max or compare for unsigned ints in SSE2 so we will just unroll.
 		auto m1 = std::min(mt::simd_detail_u64::lane_get(a.v, 1), mt::simd_detail_u64::lane_get(b.v, 1));
@@ -823,6 +839,14 @@ inline static Simd128UInt64 min(Simd128UInt64 a, Simd128UInt64 b) noexcept {
 inline static Simd128UInt64 max(Simd128UInt64 a, Simd128UInt64 b) noexcept {
 	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512dq) {
 		return Simd128UInt64(_mm_max_epu64(a.v, b.v)); //AVX-512
+	}
+	else if constexpr (mt::environment::compiler_has_sse4_2) {
+		const auto sign = _mm_set1_epi64x(static_cast<int64_t>(0x8000000000000000ull));
+		const auto a_bias = _mm_xor_si128(a.v, sign);
+		const auto b_bias = _mm_xor_si128(b.v, sign);
+		const auto pick_a = _mm_cmpgt_epi64(a_bias, b_bias); // a > b (unsigned)
+		const auto keep_b = _mm_xor_si128(pick_a, _mm_set1_epi64x(-1));
+		return Simd128UInt64(_mm_or_si128(_mm_and_si128(a.v, pick_a), _mm_and_si128(b.v, keep_b)));
 	}
 	else {
 		//No min/max or compare for unsigned ints in SSE2 so we will just unroll.

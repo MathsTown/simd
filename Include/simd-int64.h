@@ -608,12 +608,17 @@ inline static Simd256Int64 operator>>(const Simd256Int64& lhs, int bits) noexcep
 		return Simd256Int64(_mm256_srai_epi64(lhs.v, bits)); //AVX-512
 	}
 	else {
-		//No Arithmatic Shift Right for AVX2
-		auto m3 = lhs.element(3) >> bits;
-		auto m2 = lhs.element(2) >> bits;
-		auto m1 = lhs.element(1) >> bits;
-		auto m0 = lhs.element(0) >> bits;
-		return Simd256Int64(_mm256_set_epi64x(m3,m2, m1, m0));
+		//AVX2 fallback: emulate arithmetic shift with logical shift + sign fill mask.
+		const int n = (bits <= 0) ? 0 : ((bits >= 64) ? 63 : bits);
+		if (n == 0) {
+			return lhs;
+		}
+		const auto shift_r = _mm_cvtsi64_si128(static_cast<int64_t>(n));
+		const auto shift_l = _mm_cvtsi64_si128(static_cast<int64_t>(64 - n));
+		const auto logical = _mm256_srl_epi64(lhs.v, shift_r);
+		const auto sign = _mm256_cmpgt_epi64(_mm256_setzero_si256(), lhs.v);
+		const auto fill = _mm256_sll_epi64(sign, shift_l);
+		return Simd256Int64(_mm256_or_si256(logical, fill));
 	}
 }
 
@@ -624,11 +629,9 @@ inline static Simd256Int64 min(Simd256Int64 a, Simd256Int64 b) {
 		return Simd256Int64(_mm256_min_epi64(a.v, b.v)); 
 	}
 	else {
-		auto m3 = std::min(a.element(3), b.element(3));
-		auto m2 = std::min(a.element(2), b.element(2));
-		auto m1 = std::min(a.element(1), b.element(1));
-		auto m0 = std::min(a.element(0), b.element(0));
-		return Simd256Int64(_mm256_set_epi64x(m3, m2, m1, m0));
+		const auto pick_b = _mm256_cmpgt_epi64(a.v, b.v); // a > b
+		const auto keep_a = _mm256_xor_si256(pick_b, _mm256_set1_epi64x(-1));
+		return Simd256Int64(_mm256_or_si256(_mm256_and_si256(a.v, keep_a), _mm256_and_si256(b.v, pick_b)));
 	}
 }
 inline static Simd256Int64 max(Simd256Int64 a, Simd256Int64 b) {
@@ -636,11 +639,9 @@ inline static Simd256Int64 max(Simd256Int64 a, Simd256Int64 b) {
 		return Simd256Int64(_mm256_max_epi64(a.v, b.v)); 
 	}
 	else {
-		auto m3 = std::max(a.element(3), b.element(3));
-		auto m2 = std::max(a.element(2), b.element(2));
-		auto m1 = std::max(a.element(1), b.element(1));
-		auto m0 = std::max(a.element(0), b.element(0));
-		return Simd256Int64(_mm256_set_epi64x(m3, m2, m1, m0));
+		const auto pick_a = _mm256_cmpgt_epi64(a.v, b.v); // a > b
+		const auto keep_b = _mm256_xor_si256(pick_a, _mm256_set1_epi64x(-1));
+		return Simd256Int64(_mm256_or_si256(_mm256_and_si256(a.v, pick_a), _mm256_and_si256(b.v, keep_b)));
 	}
 }
 
@@ -650,12 +651,8 @@ inline static Simd256Int64 abs(Simd256Int64 a) {
 		return Simd256Int64(_mm256_abs_epi64(a.v));
 	}
 	else {
-		//No AVX2
-		auto m3 = abs(FallbackInt64(a.element(3))).v;
-		auto m2 = abs(FallbackInt64(a.element(2))).v;
-		auto m1 = abs(FallbackInt64(a.element(1))).v;
-		auto m0 = abs(FallbackInt64(a.element(0))).v;
-		return Simd256Int64(_mm256_set_epi64x(m3, m2, m1, m0));
+		const auto sign = _mm256_cmpgt_epi64(_mm256_setzero_si256(), a.v);
+		return Simd256Int64(_mm256_sub_epi64(_mm256_xor_si256(a.v, sign), sign));
 	}
 }
 
@@ -727,7 +724,7 @@ struct Simd128Int64 {
 
 	//*****Multiplication Operators*****
 	Simd128Int64& operator*=(const Simd128Int64& rhs) noexcept {
-		if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512f) {
+		if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512dq) {
 			v = _mm_mullo_epi64(v, rhs.v); //AVX-512
 			return *this;
 		}
@@ -801,6 +798,18 @@ inline static Simd128Int64 operator>>(const Simd128Int64& lhs, const int bits) n
 	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512f) {
 		return Simd128Int64(_mm_srai_epi64(lhs.v, bits)); //AVX-512
 	}
+	else if constexpr (mt::environment::compiler_has_sse4_2) {
+		const int n = (bits <= 0) ? 0 : ((bits >= 64) ? 63 : bits);
+		if (n == 0) {
+			return lhs;
+		}
+		const auto shift_r = _mm_cvtsi64_si128(static_cast<int64_t>(n));
+		const auto shift_l = _mm_cvtsi64_si128(static_cast<int64_t>(64 - n));
+		const auto logical = _mm_srl_epi64(lhs.v, shift_r);
+		const auto sign = _mm_cmpgt_epi64(_mm_setzero_si128(), lhs.v);
+		const auto fill = _mm_sll_epi64(sign, shift_l);
+		return Simd128Int64(_mm_or_si128(logical, fill));
+	}
 	else {
 		//No Arithmatic Shift Right for SSE or AVX2
 		auto m1 = lhs.element(1) >> bits;
@@ -817,6 +826,11 @@ inline static Simd128Int64 min(Simd128Int64 a, Simd128Int64 b) {
 	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512f) {
 		return Simd128Int64(_mm_min_epi64(a.v, b.v)); //AVX-512
 	}
+	else if constexpr (mt::environment::compiler_has_sse4_2) {
+		const auto pick_b = _mm_cmpgt_epi64(a.v, b.v); // a > b
+		const auto keep_a = _mm_xor_si128(pick_b, _mm_set1_epi64x(-1));
+		return Simd128Int64(_mm_or_si128(_mm_and_si128(a.v, keep_a), _mm_and_si128(b.v, pick_b)));
+	}
 	else {
 		//No min/max or compare for Signed ints in SSE2 so we will just unroll.
 		auto m1 = std::min(a.element(1), b.element(1));
@@ -831,6 +845,11 @@ inline static Simd128Int64 max(Simd128Int64 a, Simd128Int64 b) {
 	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512f) {
 		return Simd128Int64(_mm_max_epi64(a.v, b.v));  //avx-512
 	}
+	else if constexpr (mt::environment::compiler_has_sse4_2) {
+		const auto pick_a = _mm_cmpgt_epi64(a.v, b.v); // a > b
+		const auto keep_b = _mm_xor_si128(pick_a, _mm_set1_epi64x(-1));
+		return Simd128Int64(_mm_or_si128(_mm_and_si128(a.v, pick_a), _mm_and_si128(b.v, keep_b)));
+	}
 	else {
 		//No min/max or compare for Signed ints in SSE2 so we will just unroll.
 		auto m1 = std::max(a.element(1), b.element(1));
@@ -843,6 +862,10 @@ inline static Simd128Int64 max(Simd128Int64 a, Simd128Int64 b) {
 inline static Simd128Int64 abs(Simd128Int64 a) {
 	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512f) {
 		return Simd128Int64(_mm_abs_epi64(a.v));  //avx-512
+	}
+	else if constexpr (mt::environment::compiler_has_sse4_2) {
+		const auto sign = _mm_cmpgt_epi64(_mm_setzero_si128(), a.v);
+		return Simd128Int64(_mm_sub_epi64(_mm_xor_si128(a.v, sign), sign));
 	}
 	else {
 		//No i64 abs in SSE2/AVX2; use scalar lanes.

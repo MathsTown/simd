@@ -37,12 +37,12 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 * 
 *************************************************************************************************/
 template <typename T>
-concept Simd = requires (T t) {
+concept Simd = requires (T t, const T ct, typename T::F lane_value) {
 
 	
 
 	//Size of struct should be sizeof individual elements.
-	requires sizeof(t.v) == sizeof(t.element(0)) * T::number_of_elements();
+	requires sizeof(t.v) == sizeof(typename T::F) * T::number_of_elements();
 	requires sizeof(t) == sizeof(t.v);
 	
 	//General
@@ -51,10 +51,10 @@ concept Simd = requires (T t) {
 	requires std::movable<T>;
 	
 	//Has CPU Support functions
-	T::compiler_level_supported();
-	T::compiler_supported();
-	T::cpu_supported();
-	T::cpu_level_supported();
+	{ T::compiler_level_supported() } -> std::convertible_to<bool>;
+	{ T::compiler_supported() } -> std::convertible_to<bool>;
+	{ T::cpu_supported() } -> std::convertible_to<bool>;
+	{ T::cpu_level_supported() } -> std::convertible_to<bool>;
 	
 	//Public Elements
 	t.v;
@@ -66,31 +66,32 @@ concept Simd = requires (T t) {
 
 
 	//Information Functions.
-	t.size_of_element();		//Sizeof an underlying single element (sizeof(T::F))
-	t.number_of_elements();		//Number of elements.
+	{ T::size_of_element() } -> std::convertible_to<int>;		//Sizeof an underlying single element (sizeof(T::F))
+	{ T::number_of_elements() } -> std::convertible_to<int>;	//Number of elements.
 	
 	
 
 	//Typedefs		
 	static_cast<typename T::F>(1);  //T::F  must exist and by castable from a numberic type
-	requires std::same_as<decltype(t.element(0)), decltype(static_cast<typename T::F>(1))>; //T::F must be same type as the elements.
+	requires std::same_as<decltype(ct.element(0)), decltype(static_cast<typename T::F>(1))>; //T::F must be same type as the elements.
 
 	//Operators
-	t + t;
-	t - t;
-	t * t;
-	t / t;
-	t += t;
-	t -= t;
-	t *= t;
-	t /= t;
+	{ t + ct } -> std::same_as<T>;
+	{ t - ct } -> std::same_as<T>;
+	{ t * ct } -> std::same_as<T>;
+	{ t / ct } -> std::same_as<T>;
+	{ t += ct } -> std::same_as<T&>;
+	{ t -= ct } -> std::same_as<T&>;
+	{ t *= ct } -> std::same_as<T&>;
+	{ t /= ct } -> std::same_as<T&>;
 	
 
 	//Element Access
-	t.element(0);				//Read the value of an element  (index < number_of_elements() )
+	ct.element(0);				//Read the value of an element  (index < number_of_elements() )
+	{ t.set_element(0, lane_value) } -> std::same_as<void>;
 
 	//Make
-	T::make_sequential(typename T::F(static_cast<typename T::F>(1)));
+	{ T::make_sequential(typename T::F(static_cast<typename T::F>(1))) } -> std::same_as<T>;
 };
 
 
@@ -104,10 +105,10 @@ concept Simd = requires (T t) {
 *
 *************************************************************************************************/
 template <typename T>
-concept SimdSigned = Simd<T> && requires (T t) {
+concept SimdSigned = Simd<T> && requires (const T t) {
 	//Operators
-	-t;
-	abs(t);
+	{ -t } -> std::same_as<T>;
+	{ abs(t) } -> std::same_as<T>;
 };
 
 
@@ -276,19 +277,31 @@ concept SimdFloat32 = SimdFloat<T> && requires (T t) {
 *
 *************************************************************************************************/
 template <typename T>
-concept SimdInteger = Simd<T> && requires (T t) {
+concept SimdInteger = Simd<T> && requires (T t, const T ct, typename T::F scalar, int bits) {
 	//Operators
-	t << 2;
-	t >> 2;
-	t = t & t;
-	t = t | t;
-	t = t ^ t;
-	t = ~t;
-	t &= 0xff;
-	t |= 0xff;
-	t ^= 0xff;
-	min(t, T(1));
-	max(t, T(1));
+	{ ct + scalar } -> std::same_as<T>;
+	{ scalar + ct } -> std::same_as<T>;
+	{ ct - scalar } -> std::same_as<T>;
+	{ scalar - ct } -> std::same_as<T>;
+	{ ct * scalar } -> std::same_as<T>;
+	{ scalar * ct } -> std::same_as<T>;
+	{ ct / scalar } -> std::same_as<T>;
+	{ scalar / ct } -> std::same_as<T>;
+	{ t += scalar } -> std::same_as<T&>;
+	{ t -= scalar } -> std::same_as<T&>;
+	{ t *= scalar } -> std::same_as<T&>;
+	{ t /= scalar } -> std::same_as<T&>;
+	{ ct << bits } -> std::same_as<T>;
+	{ ct >> bits } -> std::same_as<T>;
+	{ ct & ct } -> std::same_as<T>;
+	{ ct | ct } -> std::same_as<T>;
+	{ ct ^ ct } -> std::same_as<T>;
+	{ ~ct } -> std::same_as<T>;
+	{ t &= ct } -> std::same_as<T&>;
+	{ t |= ct } -> std::same_as<T&>;
+	{ t ^= ct } -> std::same_as<T&>;
+	{ min(ct, ct) } -> std::same_as<T>;
+	{ max(ct, ct) } -> std::same_as<T>;
 };
 
 
@@ -302,10 +315,10 @@ concept SimdInteger = Simd<T> && requires (T t) {
 * 
 *************************************************************************************************/
 template <typename T>
-concept SimdUInt = Simd<T> && SimdInteger<T> && requires (T t) {
+concept SimdUInt = Simd<T> && SimdInteger<T> && requires (const T t, int bits) {
 	//Operators
-	rotl(t, 2);
-	rotr(t, 4);
+	{ rotl(t, bits) } -> std::same_as<T>;
+	{ rotr(t, bits) } -> std::same_as<T>;
 };
 
 /**************************************************************************************************
@@ -327,7 +340,7 @@ concept SimdInt = SimdSigned<T> && SimdInteger<T>;
 * Must implement "SimdUInt" concept and have elements of uint64_t:
 *************************************************************************************************/
 template <typename T>
-concept SimdUInt64 = Simd<T> && SimdUInt<T> && requires (T t) {
+concept SimdUInt64 = SimdUInt<T> && requires (const T t) {
 	{t.element(0)} -> std::same_as<uint64_t>;
 		requires sizeof(t.element(0)) == 8;
 };
@@ -338,29 +351,29 @@ concept SimdUInt64 = Simd<T> && SimdUInt<T> && requires (T t) {
 * Must implement "SimdUInt" concept and have elements of uint32_t:
 *************************************************************************************************/
 template <typename T>
-concept SimdUInt32 = Simd<T> && SimdUInt<T> && requires (T t) {
+concept SimdUInt32 = SimdUInt<T> && requires (const T t) {
 	{t.element(0)} -> std::same_as<uint32_t>;
 	requires sizeof(t.element(0)) == 4;
 };
 
 /**************************************************************************************************
-* Concept for types that are based on 64-bit unsigned ints
+* Concept for types that are based on 64-bit signed ints
 *
-* Must implement "SimdUInt" concept and have elements of uint64_t:
+* Must implement "SimdInt" concept and have elements of int64_t:
 *************************************************************************************************/
 template <typename T>
-concept SimdInt64 = SimdInt<T> && requires (T t) {
+concept SimdInt64 = SimdInt<T> && requires (const T t) {
 	{t.element(0)} -> std::same_as<int64_t>;
 		requires sizeof(t.element(0)) == 8;
 };
 
 /**************************************************************************************************
-* Concept for types that are based on 32-bit unsigned ints
+* Concept for types that are based on 32-bit signed ints
 *
-* Must implement "SimdUInt" concept and have elements of uint32_t:
+* Must implement "SimdInt" concept and have elements of int32_t:
 *************************************************************************************************/
 template <typename T>
-concept SimdInt32 = SimdInt<T> && requires (T t) {
+concept SimdInt32 = SimdInt<T> && requires (const T t) {
 	{t.element(0)} -> std::same_as<int32_t>;
 		requires sizeof(t.element(0)) == 4;
 };

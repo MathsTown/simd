@@ -60,7 +60,8 @@ Use `MT_USE_LIBC_FALLBACK=1` (or rely on the default). This works without extra
 libraries, but transcendental SIMD operations are slower because lanes are
 unpacked and mapped through standard library calls.
 
-## Running Tests
+## Testing Suite
+If you wish to run tests, these are currently setup to run under PowerShell for Windows.  There are tests for 3 windows compilers: MSVC, gcc and clang (as clang-cl).
 
 Windows (PowerShell), from the repository root (default generator/compiler on your machine):
 

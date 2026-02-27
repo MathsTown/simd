@@ -123,7 +123,7 @@ struct FallbackInt32 {
 	//*****Elements*****
 	static constexpr int size_of_element() { return sizeof(int32_t); }
 	static constexpr int number_of_elements() { return 1; }
-	F element(int) { return v; }
+	F element(int) const { return v; }
 	void set_element(int, F value) { v = value; }
 
 	//*****Make Functions****
@@ -153,8 +153,6 @@ struct FallbackInt32 {
 	FallbackInt32& operator&=(const FallbackInt32& rhs) noexcept { v &= rhs.v; return *this; }
 	FallbackInt32& operator|=(const FallbackInt32& rhs) noexcept { v |= rhs.v; return *this; }
 	FallbackInt32& operator^=(const FallbackInt32& rhs) noexcept { v ^= rhs.v; return *this; }
-
-	//*****Mathematical*****
 
 };
 
@@ -194,12 +192,15 @@ inline static FallbackInt32 operator>>(FallbackInt32 lhs, int bits) noexcept { l
 inline static FallbackInt32 min(FallbackInt32 a, FallbackInt32 b) { return FallbackInt32(std::min(a.v, b.v)); }
 inline static FallbackInt32 max(FallbackInt32 a, FallbackInt32 b) { return FallbackInt32(std::max(a.v, b.v)); }
 
-
 //*****Math Operators*****
-inline static FallbackInt32 abs(FallbackInt32 a) { return FallbackInt32(std::abs(a.v)); }
-
-
-
+inline static FallbackInt32 abs(FallbackInt32 a) noexcept {
+	// std::abs(INT_MIN) is UB; use unsigned two's-complement math. This ensures the same results as SSE/AVX code.
+	const uint32_t ux = static_cast<uint32_t>(a.v);
+	const uint32_t sign = ux >> 31;
+	const uint32_t mask = 0u - sign;
+	const uint32_t mag = (ux ^ mask) + sign;
+	return FallbackInt32(static_cast<int32_t>(mag));
+}
 
 
 //***************** x86_64 only code ******************
@@ -229,7 +230,7 @@ namespace mt::simd_detail_i32 {
 #endif
 	}
 
-	inline int32_t lane_get(__m256i v, int i) noexcept {
+	inline int32_t lane_get(const __m256i& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m256i_i32[i];
 #else
@@ -238,19 +239,18 @@ namespace mt::simd_detail_i32 {
 		return lanes[i];
 #endif
 	}
-	inline __m256i lane_set(__m256i v, int i, int32_t value) noexcept {
+	inline void lane_set(__m256i& v, int i, int32_t value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m256i_i32[i] = value;
-		return v;
 #else
 		alignas(32) int32_t lanes[8];
 		_mm256_storeu_si256(reinterpret_cast<__m256i*>(lanes), v);
 		lanes[i] = value;
-		return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lanes));
+		v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lanes));
 #endif
 	}
 
-	inline int32_t lane_get(__m512i v, int i) noexcept {
+	inline int32_t lane_get(const __m512i& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m512i_i32[i];
 #else
@@ -259,17 +259,14 @@ namespace mt::simd_detail_i32 {
 		return lanes[i];
 #endif
 	}
-	inline __m512i lane_set(__m512i v, int i, int32_t value) noexcept {
+	inline void lane_set(__m512i& v, int i, int32_t value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m512i_i32[i] = value;
-		return v;
 #else
 		alignas(64) int32_t lanes[16];
 		std::memcpy(lanes, &v, sizeof(v));
 		lanes[i] = value;
-		__m512i out_v;
-		std::memcpy(&out_v, lanes, sizeof(out_v));
-		return out_v;
+		std::memcpy(&v, lanes, sizeof(v));
 #endif
 	}
 
@@ -285,7 +282,7 @@ namespace mt::simd_detail_i32 {
 		return _mm_loadu_si128(reinterpret_cast<const __m128i*>(out));
 #endif
 	}
-	inline __m256i div_epi32(__m256i a, __m256i b) noexcept {
+	inline __m256i div_epi32(const __m256i& a, const __m256i& b) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return _mm256_div_epi32(a, b);
 #else
@@ -296,7 +293,7 @@ namespace mt::simd_detail_i32 {
 		return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(out));
 #endif
 	}
-	inline __m512i div_epi32(__m512i a, __m512i b) noexcept {
+	inline __m512i div_epi32(const __m512i& a, const __m512i& b) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return _mm512_div_epi32(a, b);
 #else
@@ -359,11 +356,18 @@ struct Simd512Int32 {
 	//*****Elements*****
 	static constexpr int size_of_element() { return sizeof(int32_t); }
 	static constexpr int number_of_elements() { return 16; }
-	F element(int i) { return mt::simd_detail_i32::lane_get(v, i); }
-	void set_element(int i, F value) { v = mt::simd_detail_i32::lane_set(v, i, value); }
+	F element(int i) const { return mt::simd_detail_i32::lane_get(v, i); }
+	void set_element(int i, F value) { mt::simd_detail_i32::lane_set(v, i, value); }
 
 	//*****Make Functions****
-	static Simd512Int32 make_sequential(int32_t first) { return Simd512Int32(_mm512_set_epi32(first + 15, first + 14, first + 13, first + 12, first + 11, first + 10, first + 9, first + 8, first + 7, first + 6, first + 5, first + 4, first + 3, first + 2, first + 1, first)); }
+	static Simd512Int32 make_sequential(int32_t first) {
+		const uint32_t base = static_cast<uint32_t>(first);
+		return Simd512Int32(_mm512_set_epi32(
+			static_cast<int32_t>(base + 15u), static_cast<int32_t>(base + 14u), static_cast<int32_t>(base + 13u), static_cast<int32_t>(base + 12u),
+			static_cast<int32_t>(base + 11u), static_cast<int32_t>(base + 10u), static_cast<int32_t>(base + 9u), static_cast<int32_t>(base + 8u),
+			static_cast<int32_t>(base + 7u), static_cast<int32_t>(base + 6u), static_cast<int32_t>(base + 5u), static_cast<int32_t>(base + 4u),
+			static_cast<int32_t>(base + 3u), static_cast<int32_t>(base + 2u), static_cast<int32_t>(base + 1u), static_cast<int32_t>(base)));
+	}
 
 
 	//*****Addition Operators*****
@@ -493,7 +497,7 @@ struct Simd256Int32 {
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
 	static constexpr bool compiler_supported() {
-		return mt::environment::compiler_has_avx && mt::environment::compiler_has_fma;
+		return mt::environment::compiler_has_avx2 && mt::environment::compiler_has_avx && mt::environment::compiler_has_fma;
 	}
 
 	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
@@ -516,7 +520,7 @@ struct Simd256Int32 {
 	static constexpr int size_of_element() { return sizeof(int32_t); }
 	static constexpr int number_of_elements() { return 8; }
 	F element(int i) const { return mt::simd_detail_i32::lane_get(v, i); }
-	void set_element(int i, F value) { v = mt::simd_detail_i32::lane_set(v, i, value); }
+	void set_element(int i, F value) { mt::simd_detail_i32::lane_set(v, i, value); }
 
 	//*****Addition Operators*****
 	Simd256Int32& operator+=(const Simd256Int32& rhs) noexcept { v = _mm256_add_epi32(v, rhs.v); return *this; }
@@ -568,7 +572,12 @@ struct Simd256Int32 {
 	Simd256Int32& operator^=(const Simd256Int32& rhs) noexcept { v = _mm256_xor_si256(v, rhs.v); return *this; }
 
 	//*****Make Functions****
-	static Simd256Int32 make_sequential(int32_t first) { return Simd256Int32(_mm256_set_epi32(first + 7, first + 6, first + 5, first + 4, first + 3, first + 2, first + 1, first)); }
+	static Simd256Int32 make_sequential(int32_t first) {
+		const uint32_t base = static_cast<uint32_t>(first);
+		return Simd256Int32(_mm256_set_epi32(
+			static_cast<int32_t>(base + 7u), static_cast<int32_t>(base + 6u), static_cast<int32_t>(base + 5u), static_cast<int32_t>(base + 4u),
+			static_cast<int32_t>(base + 3u), static_cast<int32_t>(base + 2u), static_cast<int32_t>(base + 1u), static_cast<int32_t>(base)));
+	}
 
 
 };
@@ -667,7 +676,7 @@ struct Simd128Int32 {
 	//*****Elements*****
 	static constexpr int size_of_element() { return sizeof(int32_t); }
 	static constexpr int number_of_elements() { return 4; }
-	F element(int i) { return mt::simd_detail_i32::lane_get(v, i); }
+	F element(int i) const { return mt::simd_detail_i32::lane_get(v, i); }
 	void set_element(int i, F value) { v = mt::simd_detail_i32::lane_set(v, i, value); }
 
 	//*****Addition Operators*****
@@ -712,7 +721,11 @@ struct Simd128Int32 {
 	Simd128Int32& operator^=(const Simd128Int32& rhs) noexcept { v = _mm_xor_si128(v, rhs.v); return *this; }
 
 	//*****Make Functions****
-	static Simd128Int32 make_sequential(int32_t first) { return Simd128Int32(_mm_set_epi32(first + 3, first + 2, first + 1, first)); }
+	static Simd128Int32 make_sequential(int32_t first) {
+		const uint32_t base = static_cast<uint32_t>(first);
+		return Simd128Int32(_mm_set_epi32(
+			static_cast<int32_t>(base + 3u), static_cast<int32_t>(base + 2u), static_cast<int32_t>(base + 1u), static_cast<int32_t>(base)));
+	}
 
 
 
@@ -860,19 +873,14 @@ static_assert(SimdInt32<Simd512Int32>, "Simd512Int32 does not implement the conc
 #if MT_SIMD_ARCH_X64
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
 typedef Simd512Int32 SimdNativeInt32;
-#else
-#if MT_SIMD_ALLOW_LEVEL3_TYPES
+#elif MT_SIMD_ALLOW_LEVEL3_TYPES
 typedef Simd256Int32 SimdNativeInt32;
 #else
-#if defined(__SSE4_1__) && defined(__SSE4_1__) && defined(__SSE3__) && defined(__SSSE3__) 
 typedef Simd128Int32 SimdNativeInt32;
-#else
-typedef Simd128Int32 SimdNativeInt32;
-#endif	
-#endif	
 #endif
 #else
 typedef FallbackInt32 SimdNativeInt32;
 #endif
+
 
 

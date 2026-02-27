@@ -1,2 +1,4 @@
 Build/
 Temp/
+.obj
+.exe

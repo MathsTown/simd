@@ -125,9 +125,10 @@ struct FallbackUInt64 {
 	static constexpr int size_of_element() { return sizeof(uint64_t); }
 	static constexpr int number_of_elements() { return 1; }	
 	F element(int) const { return v; }
+	void set_element(int, F value) { v = value; }
 
 	//*****Make Functions****
-	static FallbackUInt64 make_sequential(uint32_t first) { return FallbackUInt64(first); }
+	static FallbackUInt64 make_sequential(uint64_t first) { return FallbackUInt64(first); }
 
 
 	//*****Addition Operators*****
@@ -187,8 +188,20 @@ inline static FallbackUInt64 operator~(FallbackUInt64 lhs) noexcept { return Fal
 inline static FallbackUInt64 operator<<(FallbackUInt64 lhs, int bits) noexcept { lhs.v <<= bits; return lhs; }
 inline static FallbackUInt64 operator>>(FallbackUInt64 lhs, int bits) noexcept { lhs.v >>= bits; return lhs; }
 
-inline static FallbackUInt64 rotl(const FallbackUInt64& a, int bits) { return a << bits | a >> (64 - bits); };
-inline static FallbackUInt64 rotr(const FallbackUInt64& a, int bits) { return a >> bits | a<< (64 - bits); };
+inline static FallbackUInt64 rotl(const FallbackUInt64& a, int bits) {
+	const unsigned int n = static_cast<unsigned int>(bits) & 63u;
+	if (n == 0u) {
+		return a;
+	}
+	return (a << static_cast<int>(n)) | (a >> static_cast<int>(64u - n));
+};
+inline static FallbackUInt64 rotr(const FallbackUInt64& a, int bits) {
+	const unsigned int n = static_cast<unsigned int>(bits) & 63u;
+	if (n == 0u) {
+		return a;
+	}
+	return (a >> static_cast<int>(n)) | (a << static_cast<int>(64u - n));
+};
 
 //*****Min/Max*****
 inline static FallbackUInt64 min(FallbackUInt64 a, FallbackUInt64 b) { return FallbackUInt64(std::min(a.v, b.v)); }
@@ -223,7 +236,7 @@ namespace mt::simd_detail_u64 {
 #endif
 	}
 
-	inline uint64_t lane_get(__m256i v, int i) noexcept {
+	inline uint64_t lane_get(const __m256i& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m256i_u64[i];
 #else
@@ -232,19 +245,18 @@ namespace mt::simd_detail_u64 {
 		return lanes[i];
 #endif
 	}
-	inline __m256i lane_set(__m256i v, int i, uint64_t value) noexcept {
+	inline void lane_set(__m256i& v, int i, uint64_t value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m256i_u64[i] = value;
-		return v;
 #else
 		alignas(32) uint64_t lanes[4];
 		_mm256_storeu_si256(reinterpret_cast<__m256i*>(lanes), v);
 		lanes[i] = value;
-		return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lanes));
+		v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lanes));
 #endif
 	}
 
-	inline uint64_t lane_get(__m512i v, int i) noexcept {
+	inline uint64_t lane_get(const __m512i& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m512i_u64[i];
 #else
@@ -253,17 +265,14 @@ namespace mt::simd_detail_u64 {
 		return lanes[i];
 #endif
 	}
-	inline __m512i lane_set(__m512i v, int i, uint64_t value) noexcept {
+	inline void lane_set(__m512i& v, int i, uint64_t value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m512i_u64[i] = value;
-		return v;
 #else
 		alignas(64) uint64_t lanes[8];
 		std::memcpy(lanes, &v, sizeof(v));
 		lanes[i] = value;
-		__m512i out_v;
-		std::memcpy(&out_v, lanes, sizeof(out_v));
-		return out_v;
+		std::memcpy(&v, lanes, sizeof(v));
 #endif
 	}
 
@@ -279,7 +288,7 @@ namespace mt::simd_detail_u64 {
 		return _mm_loadu_si128(reinterpret_cast<const __m128i*>(out));
 #endif
 	}
-	inline __m256i div_epu64(__m256i a, __m256i b) noexcept {
+	inline __m256i div_epu64(const __m256i& a, const __m256i& b) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return _mm256_div_epu64(a, b);
 #else
@@ -290,7 +299,7 @@ namespace mt::simd_detail_u64 {
 		return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(out));
 #endif
 	}
-	inline __m512i div_epu64(__m512i a, __m512i b) noexcept {
+	inline __m512i div_epu64(const __m512i& a, const __m512i& b) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return _mm512_div_epu64(a, b);
 #else
@@ -355,7 +364,7 @@ struct Simd512UInt64 {
 
 	//*****Elements*****
 	F element(int i) const { return mt::simd_detail_u64::lane_get(v, i); }
-	void set_element(int i, F value) { v = mt::simd_detail_u64::lane_set(v, i, value); }
+	void set_element(int i, F value) { mt::simd_detail_u64::lane_set(v, i, value); }
 	static constexpr int size_of_element() { return sizeof(uint64_t); }
 	static constexpr int number_of_elements() { return 8; }
 
@@ -420,8 +429,14 @@ inline static Simd512UInt64 operator~(const Simd512UInt64& lhs) noexcept { retur
 inline static Simd512UInt64 operator<<(const Simd512UInt64& lhs, int bits) noexcept { return Simd512UInt64(_mm512_slli_epi64(lhs.v, bits)); }
 inline static Simd512UInt64 operator>>(const Simd512UInt64& lhs, int bits) noexcept { return Simd512UInt64(_mm512_srli_epi64(lhs.v, bits)); }
 
-inline static Simd512UInt64 rotl(const Simd512UInt64& a, const int bits) noexcept { return Simd512UInt64(_mm512_rolv_epi64(a.v, _mm512_set1_epi64(bits))); }
-inline static Simd512UInt64 rotr(const Simd512UInt64& a, const int bits) noexcept { return Simd512UInt64(_mm512_rorv_epi64(a.v, _mm512_set1_epi64(bits))); }
+inline static Simd512UInt64 rotl(const Simd512UInt64& a, const int bits) noexcept {
+	const int n = bits & 63;
+	return Simd512UInt64(_mm512_rolv_epi64(a.v, _mm512_set1_epi64(n)));
+}
+inline static Simd512UInt64 rotr(const Simd512UInt64& a, const int bits) noexcept {
+	const int n = bits & 63;
+	return Simd512UInt64(_mm512_rorv_epi64(a.v, _mm512_set1_epi64(n)));
+}
 
 //*****Min/Max*****
 inline static Simd512UInt64 min(Simd512UInt64 a, Simd512UInt64 b) { return Simd512UInt64(_mm512_min_epu64(a.v, b.v)); }
@@ -479,6 +494,7 @@ struct Simd256UInt64 {
 	static constexpr int size_of_element() { return sizeof(uint64_t); }
 	static constexpr int number_of_elements() { return 4; }	
 	F element(int i) const { return mt::simd_detail_u64::lane_get(v, i); }
+	void set_element(int i, F value) { mt::simd_detail_u64::lane_set(v, i, value); }
 	
 
 	//*****Addition Operators*****
@@ -565,12 +581,46 @@ inline static Simd256UInt64 operator~(const Simd256UInt64& lhs) noexcept { retur
 //*****Shifting Operators*****
 inline static Simd256UInt64 operator<<(const Simd256UInt64& lhs, int bits) noexcept { return Simd256UInt64(_mm256_slli_epi64(lhs.v, bits)); }
 inline static Simd256UInt64 operator>>(const Simd256UInt64& lhs, int bits) noexcept { return Simd256UInt64(_mm256_srli_epi64(lhs.v, bits)); }
-inline static Simd256UInt64 rotl(const Simd256UInt64& a, int bits) {return a << bits | a >> (64 - bits);};
-inline static Simd256UInt64 rotr(const Simd256UInt64& a, int bits) {return a >> bits | a << (64 - bits);};
+inline static Simd256UInt64 rotl(const Simd256UInt64& a, int bits) {
+	const unsigned int n = static_cast<unsigned int>(bits) & 63u;
+	if (n == 0u) {
+		return a;
+	}
+	return (a << static_cast<int>(n)) | (a >> static_cast<int>(64u - n));
+};
+inline static Simd256UInt64 rotr(const Simd256UInt64& a, int bits) {
+	const unsigned int n = static_cast<unsigned int>(bits) & 63u;
+	if (n == 0u) {
+		return a;
+	}
+	return (a >> static_cast<int>(n)) | (a << static_cast<int>(64u - n));
+};
 
 //*****Min/Max*****
-inline static Simd256UInt64 min(Simd256UInt64 a, Simd256UInt64 b) noexcept { return Simd256UInt64(_mm256_min_epu64(a.v, b.v)); }
-inline static Simd256UInt64 max(Simd256UInt64 a, Simd256UInt64 b) noexcept { return Simd256UInt64(_mm256_max_epu64(a.v, b.v)); }
+inline static Simd256UInt64 min(Simd256UInt64 a, Simd256UInt64 b) noexcept {
+	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512dq) {
+		return Simd256UInt64(_mm256_min_epu64(a.v, b.v));
+	}
+	else {
+		const auto m3 = std::min(mt::simd_detail_u64::lane_get(a.v, 3), mt::simd_detail_u64::lane_get(b.v, 3));
+		const auto m2 = std::min(mt::simd_detail_u64::lane_get(a.v, 2), mt::simd_detail_u64::lane_get(b.v, 2));
+		const auto m1 = std::min(mt::simd_detail_u64::lane_get(a.v, 1), mt::simd_detail_u64::lane_get(b.v, 1));
+		const auto m0 = std::min(mt::simd_detail_u64::lane_get(a.v, 0), mt::simd_detail_u64::lane_get(b.v, 0));
+		return Simd256UInt64(_mm256_set_epi64x(m3, m2, m1, m0));
+	}
+}
+inline static Simd256UInt64 max(Simd256UInt64 a, Simd256UInt64 b) noexcept {
+	if constexpr (mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512dq) {
+		return Simd256UInt64(_mm256_max_epu64(a.v, b.v));
+	}
+	else {
+		const auto m3 = std::max(mt::simd_detail_u64::lane_get(a.v, 3), mt::simd_detail_u64::lane_get(b.v, 3));
+		const auto m2 = std::max(mt::simd_detail_u64::lane_get(a.v, 2), mt::simd_detail_u64::lane_get(b.v, 2));
+		const auto m1 = std::max(mt::simd_detail_u64::lane_get(a.v, 1), mt::simd_detail_u64::lane_get(b.v, 1));
+		const auto m0 = std::max(mt::simd_detail_u64::lane_get(a.v, 0), mt::simd_detail_u64::lane_get(b.v, 0));
+		return Simd256UInt64(_mm256_set_epi64x(m3, m2, m1, m0));
+	}
+}
 
 
 
@@ -632,6 +682,7 @@ struct Simd128UInt64 {
 
 	//*****Elements*****
 	F element(int i) const { return mt::simd_detail_u64::lane_get(v, i); }
+	void set_element(int i, F value) { v = mt::simd_detail_u64::lane_set(v, i, value); }
 
 
 	//*****Addition Operators*****
@@ -719,21 +770,29 @@ inline static Simd128UInt64 operator<<(const Simd128UInt64& lhs, int bits) noexc
 inline static Simd128UInt64 operator>>(const Simd128UInt64& lhs, int bits) noexcept { return Simd128UInt64(_mm_srli_epi64(lhs.v, bits)); }
 
 inline static Simd128UInt64 rotl(const Simd128UInt64& a, int bits) {
+	const int n = bits & 63;
 	if constexpr (mt::environment::compiler_has_avx512f) {
-		return _mm_rolv_epi64(a.v, _mm_set1_epi64x(bits));
+		return Simd128UInt64(_mm_rolv_epi64(a.v, _mm_set1_epi64x(n)));
 	}
 	else {
-		return a << bits | a >> (64 - bits);
+		if (n == 0) {
+			return a;
+		}
+		return (a << n) | (a >> (64 - n));
 	}
 };
 
 
 inline static Simd128UInt64 rotr(const Simd128UInt64& a, int bits) {
+	const int n = bits & 63;
 	if constexpr (mt::environment::compiler_has_avx512f) {
-		return _mm_rorv_epi64(a.v, _mm_set1_epi64x(bits));
+		return Simd128UInt64(_mm_rorv_epi64(a.v, _mm_set1_epi64x(n)));
 	}
 	else {
-		return a >> bits | a << (64 - bits);
+		if (n == 0) {
+			return a;
+		}
+		return (a >> n) | (a << (64 - n));
 	}
 };
 
@@ -806,20 +865,15 @@ static_assert(SimdUInt64<Simd512UInt64>, "Simd512UInt64 does not implement the c
  Define SimdNativeUInt64 as the best supported type at compile time.
 *************************************************************************************************/
 #if MT_SIMD_ARCH_X64
-	#if MT_SIMD_ALLOW_LEVEL4_TYPES
-	typedef Simd512UInt64 SimdNativeUInt64;
-	#else
-	#if MT_SIMD_ALLOW_LEVEL3_TYPES
-	typedef Simd256UInt64 SimdNativeUInt64;
-	#else
-	#if defined(__SSE4_1__) && defined(__SSE4_1__) && defined(__SSE3__) && defined(__SSSE3__) 
-	typedef Simd128UInt64 SimdNativeUInt64;
-	#else
-	typedef Simd128UInt64 SimdNativeUInt64;
-	#endif	
-	#endif	
-	#endif
+#if MT_SIMD_ALLOW_LEVEL4_TYPES
+typedef Simd512UInt64 SimdNativeUInt64;
+#elif MT_SIMD_ALLOW_LEVEL3_TYPES
+typedef Simd256UInt64 SimdNativeUInt64;
 #else
-	typedef FallbackUInt64 SimdNativeUInt64;
+typedef Simd128UInt64 SimdNativeUInt64;
 #endif
+#else
+typedef FallbackUInt64 SimdNativeUInt64;
+#endif
+
 

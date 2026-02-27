@@ -154,8 +154,6 @@ struct FallbackInt64 {
 	FallbackInt64& operator|=(const FallbackInt64& rhs) noexcept { v |= rhs.v; return *this; }
 	FallbackInt64& operator^=(const FallbackInt64& rhs) noexcept { v ^= rhs.v; return *this; }
 
-	//*****Mathematical*****
-
 };
 
 //*****Addition Operators*****
@@ -195,12 +193,15 @@ inline static FallbackInt64 operator>>(FallbackInt64 lhs, int bits) noexcept { l
 inline static FallbackInt64 min(FallbackInt64 a, FallbackInt64 b) { return FallbackInt64(std::min(a.v, b.v)); }
 inline static FallbackInt64 max(FallbackInt64 a, FallbackInt64 b) { return FallbackInt64(std::max(a.v, b.v)); }
 
-
 //*****Math Operators*****
-inline static FallbackInt64 abs(FallbackInt64 a) { return FallbackInt64(std::abs(a.v)); }
-
-
-
+inline static FallbackInt64 abs(FallbackInt64 a) noexcept {
+	// std::abs(INT64_MIN) is UB; use unsigned two's-complement math.
+	const uint64_t ux = static_cast<uint64_t>(a.v);
+	const uint64_t sign = ux >> 63;
+	const uint64_t mask = 0ull - sign;
+	const uint64_t mag = (ux ^ mask) + sign;
+	return FallbackInt64(static_cast<int64_t>(mag));
+}
 
 
 //***************** x86_64 only code ******************
@@ -229,7 +230,7 @@ namespace mt::simd_detail_i64 {
 		return _mm_loadu_si128(reinterpret_cast<const __m128i*>(lanes));
 #endif
 	}
-	inline int64_t lane_get(__m256i v, int i) noexcept {
+	inline int64_t lane_get(const __m256i& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m256i_i64[i];
 #else
@@ -238,18 +239,17 @@ namespace mt::simd_detail_i64 {
 		return lanes[i];
 #endif
 	}
-	inline __m256i lane_set(__m256i v, int i, int64_t value) noexcept {
+	inline void lane_set(__m256i& v, int i, int64_t value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m256i_i64[i] = value;
-		return v;
 #else
 		alignas(32) int64_t lanes[4];
 		_mm256_storeu_si256(reinterpret_cast<__m256i*>(lanes), v);
 		lanes[i] = value;
-		return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lanes));
+		v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(lanes));
 #endif
 	}
-	inline int64_t lane_get(__m512i v, int i) noexcept {
+	inline int64_t lane_get(const __m512i& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m512i_i64[i];
 #else
@@ -258,17 +258,14 @@ namespace mt::simd_detail_i64 {
 		return lanes[i];
 #endif
 	}
-	inline __m512i lane_set(__m512i v, int i, int64_t value) noexcept {
+	inline void lane_set(__m512i& v, int i, int64_t value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m512i_i64[i] = value;
-		return v;
 #else
 		alignas(64) int64_t lanes[8];
 		std::memcpy(lanes, &v, sizeof(v));
 		lanes[i] = value;
-		__m512i out_v;
-		std::memcpy(&out_v, lanes, sizeof(out_v));
-		return out_v;
+		std::memcpy(&v, lanes, sizeof(v));
 #endif
 	}
 
@@ -284,7 +281,7 @@ namespace mt::simd_detail_i64 {
 		return _mm_loadu_si128(reinterpret_cast<const __m128i*>(out));
 #endif
 	}
-	inline __m256i div_epi64(__m256i a, __m256i b) noexcept {
+	inline __m256i div_epi64(const __m256i& a, const __m256i& b) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return _mm256_div_epi64(a, b);
 #else
@@ -295,7 +292,7 @@ namespace mt::simd_detail_i64 {
 		return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(out));
 #endif
 	}
-	inline __m512i div_epi64(__m512i a, __m512i b) noexcept {
+	inline __m512i div_epi64(const __m512i& a, const __m512i& b) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return _mm512_div_epi64(a, b);
 #else
@@ -359,10 +356,15 @@ struct Simd512Int64 {
 	static constexpr int size_of_element() { return sizeof(int64_t); }
 	static constexpr int number_of_elements() { return 8; }
 	F element(int i) const { return mt::simd_detail_i64::lane_get(v, i); }
-	void set_element(int i, F value) { v = mt::simd_detail_i64::lane_set(v, i, value); }
+	void set_element(int i, F value) { mt::simd_detail_i64::lane_set(v, i, value); }
 
 	//*****Make Functions****
-	static Simd512Int64 make_sequential(int64_t first) { return Simd512Int64(_mm512_set_epi64(first + 7, first + 6, first + 5, first + 4, first + 3, first + 2, first + 1, first)); }
+	static Simd512Int64 make_sequential(int64_t first) {
+		const uint64_t base = static_cast<uint64_t>(first);
+		return Simd512Int64(_mm512_set_epi64(
+			static_cast<int64_t>(base + 7ull), static_cast<int64_t>(base + 6ull), static_cast<int64_t>(base + 5ull), static_cast<int64_t>(base + 4ull),
+			static_cast<int64_t>(base + 3ull), static_cast<int64_t>(base + 2ull), static_cast<int64_t>(base + 1ull), static_cast<int64_t>(base)));
+	}
 
 
 	//*****Addition Operators*****
@@ -470,7 +472,7 @@ struct Simd256Int64 {
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
 	static constexpr bool compiler_supported() {
-		return mt::environment::compiler_has_avx && mt::environment::compiler_has_fma;
+		return mt::environment::compiler_has_avx2 && mt::environment::compiler_has_avx && mt::environment::compiler_has_fma;
 	}
 
 	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
@@ -493,7 +495,7 @@ struct Simd256Int64 {
 	static constexpr int size_of_element() { return sizeof(int64_t); }
 	static constexpr int number_of_elements() { return 4; }
 	F element(int i) const { return mt::simd_detail_i64::lane_get(v, i); }
-	void set_element(int i, F value) { v = mt::simd_detail_i64::lane_set(v, i, value); }
+	void set_element(int i, F value) { mt::simd_detail_i64::lane_set(v, i, value); }
 
 	//*****Addition Operators*****
 	Simd256Int64& operator+=(const Simd256Int64& rhs) noexcept { v = _mm256_add_epi64(v, rhs.v); return *this; }
@@ -552,7 +554,11 @@ struct Simd256Int64 {
 	Simd256Int64& operator^=(const Simd256Int64& rhs) noexcept { v = _mm256_xor_si256(v, rhs.v); return *this; }
 
 	//*****Make Functions****
-	static Simd256Int64 make_sequential(int64_t first) { return Simd256Int64(_mm256_set_epi64x( first + 3, first + 2, first + 1, first)); }
+	static Simd256Int64 make_sequential(int64_t first) {
+		const uint64_t base = static_cast<uint64_t>(first);
+		return Simd256Int64(_mm256_set_epi64x(
+			static_cast<int64_t>(base + 3ull), static_cast<int64_t>(base + 2ull), static_cast<int64_t>(base + 1ull), static_cast<int64_t>(base)));
+	}
 
 
 };
@@ -635,10 +641,10 @@ inline static Simd256Int64 abs(Simd256Int64 a) {
 	}
 	else {
 		//No AVX2
-		auto m3 = std::abs(a.element(3));
-		auto m2 = std::abs(a.element(2));
-		auto m1 = std::abs(a.element(1));
-		auto m0 = std::abs(a.element(0));
+		auto m3 = abs(FallbackInt64(a.element(3))).v;
+		auto m2 = abs(FallbackInt64(a.element(2))).v;
+		auto m1 = abs(FallbackInt64(a.element(1))).v;
+		auto m0 = abs(FallbackInt64(a.element(0))).v;
 		return Simd256Int64(_mm256_set_epi64x(m3, m2, m1, m0));
 	}
 }
@@ -738,7 +744,10 @@ struct Simd128Int64 {
 	Simd128Int64& operator^=(const Simd128Int64& rhs) noexcept { v = _mm_xor_si128(v, rhs.v); return *this; }
 
 	//*****Make Functions****
-	static Simd128Int64 make_sequential(int64_t first) { return Simd128Int64(_mm_set_epi64x( first + 1, first)); }
+	static Simd128Int64 make_sequential(int64_t first) {
+		const uint64_t base = static_cast<uint64_t>(first);
+		return Simd128Int64(_mm_set_epi64x(static_cast<int64_t>(base + 1ull), static_cast<int64_t>(base)));
+	}
 
 
 
@@ -772,7 +781,7 @@ inline static Simd128Int64 operator/(const int64_t lhs, const Simd128Int64& rhs)
 inline static Simd128Int64 operator&(Simd128Int64  lhs, const Simd128Int64& rhs) noexcept { lhs &= rhs; return lhs; }
 inline static Simd128Int64 operator|(Simd128Int64  lhs, const Simd128Int64& rhs) noexcept { lhs |= rhs; return lhs; }
 inline static Simd128Int64 operator^(Simd128Int64  lhs, const Simd128Int64& rhs) noexcept { lhs ^= rhs; return lhs; }
-inline static Simd128Int64 operator~(const Simd128Int64& lhs) noexcept { return Simd128Int64(_mm_xor_si128(lhs.v, _mm_cmpeq_epi64(lhs.v, lhs.v))); }
+inline static Simd128Int64 operator~(const Simd128Int64& lhs) noexcept { return Simd128Int64(_mm_xor_si128(lhs.v, _mm_set1_epi32(-1))); }
 
 
 //*****Shifting Operators*****
@@ -826,12 +835,10 @@ inline static Simd128Int64 abs(Simd128Int64 a) {
 		return Simd128Int64(_mm_abs_epi64(a.v));  //avx-512
 	}
 	else {
-		//Not supported by SSE2, so we need to emulate it.
-		//This clever little code sequence is thanks to Agner Fog.
-		const auto sign = _mm_srai_epi64(a.v, 31); //shift right moving in sign bits
-		const auto inv = _mm_xor_si128(a.v, sign);   // invert bits if negative
-		const auto result = _mm_sub_epi64(inv, sign); //add 1 if needed
-		return Simd128Int64(result);
+		//No i64 abs in SSE2/AVX2; use scalar lanes.
+		const auto m1 = abs(FallbackInt64(a.element(1))).v;
+		const auto m0 = abs(FallbackInt64(a.element(0))).v;
+		return Simd128Int64(_mm_set_epi64x(m1, m0));
 	}
 }
 
@@ -895,19 +902,15 @@ static_assert(SimdInt64<Simd512Int64>, "Simd512Int64 does not implement the conc
 #if MT_SIMD_ARCH_X64
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
 typedef Simd512Int64 SimdNativeInt64;
-#else
-#if MT_SIMD_ALLOW_LEVEL3_TYPES
+#elif MT_SIMD_ALLOW_LEVEL3_TYPES
 typedef Simd256Int64 SimdNativeInt64;
 #else
-#if defined(__SSE4_1__) && defined(__SSE4_1__) && defined(__SSE3__) && defined(__SSSE3__) 
 typedef Simd128Int64 SimdNativeInt64;
-#else
-typedef Simd128Int64 SimdNativeInt64;
-#endif	
-#endif	
 #endif
 #else
 typedef FallbackInt64 SimdNativeInt64;
 #endif
+
+
 
 

@@ -25,6 +25,8 @@ add_executable(simd_test
     test_f64.cpp
     test_i32.cpp
     test_i64.cpp
+    test_u32.cpp
+    test_u64.cpp
 )
 
 target_include_directories(simd_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Include)

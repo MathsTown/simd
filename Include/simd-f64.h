@@ -363,7 +363,7 @@ namespace mt::simd_detail_f64 {
 		return _mm_loadu_pd(lanes);
 #endif
 	}
-	inline double lane_get(__m256d v, int i) noexcept {
+	inline double lane_get(const __m256d& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m256d_f64[i];
 #else
@@ -372,18 +372,17 @@ namespace mt::simd_detail_f64 {
 		return lanes[i];
 #endif
 	}
-	inline __m256d lane_set(__m256d v, int i, double value) noexcept {
+	inline void lane_set(__m256d& v, int i, double value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m256d_f64[i] = value;
-		return v;
 #else
 		alignas(32) double lanes[4];
 		_mm256_storeu_pd(lanes, v);
 		lanes[i] = value;
-		return _mm256_loadu_pd(lanes);
+		v = _mm256_loadu_pd(lanes);
 #endif
 	}
-	inline double lane_get(__m512d v, int i) noexcept {
+	inline double lane_get(const __m512d& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m512d_f64[i];
 #else
@@ -392,17 +391,14 @@ namespace mt::simd_detail_f64 {
 		return lanes[i];
 #endif
 	}
-	inline __m512d lane_set(__m512d v, int i, double value) noexcept {
+	inline void lane_set(__m512d& v, int i, double value) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		v.m512d_f64[i] = value;
-		return v;
 #else
 		alignas(64) double lanes[8];
 		std::memcpy(lanes, &v, sizeof(v));
 		lanes[i] = value;
-		__m512d out_v;
-		std::memcpy(&out_v, lanes, sizeof(out_v));
-		return out_v;
+		std::memcpy(&v, lanes, sizeof(v));
 #endif
 	}
 
@@ -415,14 +411,14 @@ namespace mt::simd_detail_f64 {
 		return _mm_loadu_pd(out);
 	}
 	template <typename Fn>
-	inline __m256d map_unary(__m256d v, Fn fn) {
+	inline __m256d map_unary(const __m256d& v, Fn fn) {
 		alignas(32) double in[4], out[4];
 		_mm256_storeu_pd(in, v);
 		for (int i = 0; i < 4; ++i) out[i] = fn(in[i]);
 		return _mm256_loadu_pd(out);
 	}
 	template <typename Fn>
-	inline __m512d map_unary(__m512d v, Fn fn) {
+	inline __m512d map_unary(const __m512d& v, Fn fn) {
 		alignas(64) double in[8], out[8];
 		std::memcpy(in, &v, sizeof(v));
 		for (int i = 0; i < 8; ++i) out[i] = fn(in[i]);
@@ -438,14 +434,14 @@ namespace mt::simd_detail_f64 {
 		return _mm_loadu_pd(out);
 	}
 	template <typename Fn>
-	inline __m256d map_binary(__m256d a, __m256d b, Fn fn) {
+	inline __m256d map_binary(const __m256d& a, const __m256d& b, Fn fn) {
 		alignas(32) double lhs[4], rhs[4], out[4];
 		_mm256_storeu_pd(lhs, a); _mm256_storeu_pd(rhs, b);
 		for (int i = 0; i < 4; ++i) out[i] = fn(lhs[i], rhs[i]);
 		return _mm256_loadu_pd(out);
 	}
 	template <typename Fn>
-	inline __m512d map_binary(__m512d a, __m512d b, Fn fn) {
+	inline __m512d map_binary(const __m512d& a, const __m512d& b, Fn fn) {
 		alignas(64) double lhs[8], rhs[8], out[8];
 		std::memcpy(lhs, &a, sizeof(a));
 		std::memcpy(rhs, &b, sizeof(b));
@@ -769,7 +765,7 @@ struct Simd512Float64 {
 	}
 	void set_element(int i, F value) {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
-		v = mt::simd_detail_f64::lane_set(v, i, value);
+		mt::simd_detail_f64::lane_set(v, i, value);
 #else
 		alignas(32) double lanes[4];
 		std::memcpy(lanes, &v, sizeof(v));
@@ -1068,7 +1064,7 @@ struct Simd256Float64 {
 
 	//*****Access Elements*****
 	F element(int i) const { return mt::simd_detail_f64::lane_get(v, i); }
-	void set_element(int i, F value) { v = mt::simd_detail_f64::lane_set(v, i, value); }
+	void set_element(int i, F value) { mt::simd_detail_f64::lane_set(v, i, value); }
 
 	//*****Addition Operators*****
 	Simd256Float64& operator+=(const Simd256Float64& rhs) noexcept { v = _mm256_add_pd(v, rhs.v); return *this; }
@@ -1835,4 +1831,5 @@ static_assert(SimdCompareOps<Simd512Float64>, "Simd512Float64 does not implement
 	//not x64
 	typedef FallbackFloat64 SimdNativeFloat64;
 #endif
+
 

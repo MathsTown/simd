@@ -23,6 +23,8 @@ Current scope:
 #include "test_harness.h"
 #include "test_i32.h"
 #include "test_i64.h"
+#include "test_u32.h"
+#include "test_u64.h"
 
 void TestHarness::add_result(const std::string& name, bool passed, const std::string& detail) {
     results.push_back(TestResult{name, passed ? TestStatus::pass : TestStatus::fail, detail});
@@ -93,11 +95,21 @@ int TestHarness::summarize_and_exit_code() const {
 }
 
 static void print_environment_summary() {
+    const char* math_backend = "UNKNOWN";
+    if (mt::environment::use_svml) {
+        math_backend = "SVML";
+    } else if (mt::environment::use_sleef) {
+        math_backend = "SLEEF";
+    } else if (mt::environment::use_libc_fallback) {
+        math_backend = "LIBC_FALLBACK";
+    }
+
     std::cout << "===== Build Environment =====\n";
     std::cout << "Visual Studio : " << (mt::environment::is_visual_studio ? "Yes" : "No") << "\n";
     std::cout << "Clang         : " << (mt::environment::is_clang ? "Yes" : "No") << "\n";
     std::cout << "GCC           : " << (mt::environment::is_gcc ? "Yes" : "No") << "\n";
     std::cout << "x64 target    : " << (mt::environment::is_x64 ? "Yes" : "No") << "\n";
+    std::cout << "Math backend  : " << math_backend << "\n";
     std::cout << "=============================\n";
 }
 
@@ -164,6 +176,8 @@ int main() {
     if (!harness.should_halt()) { run_float64_arithmetic_tests(harness); }
     if (!harness.should_halt()) { run_int32_arithmetic_tests(harness); }
     if (!harness.should_halt()) { run_int64_arithmetic_tests(harness); }
+    if (!harness.should_halt()) { run_uint32_arithmetic_tests(harness); }
+    if (!harness.should_halt()) { run_uint64_arithmetic_tests(harness); }
 
     return harness.summarize_and_exit_code();
 }

@@ -23,18 +23,18 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Basic SIMD Types for 64-bit Unsigned Integers:
 
-FallbackFloat32		- Works on all build modes and CPUs.  Forwards most requests to the standard library.
+FallbackUInt64		- Works on all build modes and CPUs.  Forwards most requests to the standard library.
 
-Simd128Float32		- x86_64 Microarchitecture Level 1 - Works on all x86_64 CPUs.
+Simd128UInt64		- x86_64 Microarchitecture Level 1 - Works on all x86_64 CPUs.
 					- Requires SSE and SSE2 support.  Will use SSE4.1 instructions when __SSE4_1__ or __AVX__ defined.
 
-Simd256Float32		- x86_64 Microarchitecture Level 3.
+Simd256UInt64		- x86_64 Microarchitecture Level 3.
 					- Requires AVX, AVX2 and FMA support.
 
-Simd512Float32		- x86_64 Microarchitecture Level 4.
-					- Requires AVX512F, AVX512DQ, ACX512VL, AVX512CD, AVX512BW
+Simd512UInt64		- x86_64 Microarchitecture Level 4.
+					- Requires AVX512F, AVX512DQ, AVX512VL, AVX512CD, AVX512BW
 
-SimdNativeFloat32	- A Typedef referring to one of the above types.  Chosen based on compiler support/mode.
+SimdNativeUInt64	- A Typedef referring to one of the above types.  Chosen based on compiler support/mode.
 					- Just use this type in your code if you are building for a specific platform.
 
 
@@ -43,7 +43,7 @@ Unless you are using a SimdNative typedef, you must check for CPU support before
 - MSVC - You may check at runtime or compile time.  (compile time checks generally results in much faster code)
 - GCC/Clang - You must check at compile time (due to compiler limitations)
 
-Types reqpresenting floats, doubles, ints, longs etc are arranged in microarchitecture level groups.
+Types representing floats, doubles, ints, longs etc are arranged in microarchitecture level groups.
 Generally CPUs have more SIMD support for floats than ints.
 Ensure the CPU supports the full "level" if you need to use more than one type.
 
@@ -62,8 +62,12 @@ code than compiling with full compiler support.  Visual studio will optimise AVX
 If you are able, I recommend distributing code at different support levels. (1,3,4). Let the user choose which to download,
 or your installer can make the switch.  It is also possible to dynamically load different .dlls
 
+- Simd128/256/512 describe lane shape and API width and correspond to level 1, 2 & 4.
+- When the compiler detects higher levels of support, such as SSE4.1 (level 2), more optimised instructions may be chosen when available.
+- Runtime checks are only meaningful for builds intended to run across mixed CPU capabilities, but separate compilation in recommended.
+
 WASM Support:
-I've included FallbackFloat32 for use with Emscripen, but use SimdNativeFloat32 as SIMD support will be added soon.
+I've included FallbackUInt64 for use with Emscripen, but use SimdNativeUInt64 as SIMD support will be added soon.
 
 *********************************************************************************************************/
 #pragma once
@@ -213,6 +217,12 @@ inline static FallbackUInt64 max(FallbackUInt64 a, FallbackUInt64 b) { return Fa
 #if MT_SIMD_ARCH_X64
 #include <immintrin.h>
 
+
+/**************************************************************************************************
+ * Compiler Compatability Layer
+ * MSCV intrinsics are sometime a little more feature rich than GCC and Clang.  
+ * This section provides shims and patches for compiler incompatible behaviour.
+ * ************************************************************************************************/
 namespace mt::simd_detail_u64 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline uint64_t lane_get(__m128i v, int i) noexcept {
@@ -667,7 +677,7 @@ struct Simd128UInt64 {
 
 	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
 	static bool cpu_level_supported(CpuInformation cpuid) {
-		return cpuid.has_sse2() && cpuid.has_sse2() ;
+		return cpuid.has_sse() && cpuid.has_sse2();
 	}
 
 
@@ -771,7 +781,7 @@ inline static Simd128UInt64 operator>>(const Simd128UInt64& lhs, int bits) noexc
 
 inline static Simd128UInt64 rotl(const Simd128UInt64& a, int bits) {
 	const int n = bits & 63;
-	if constexpr (mt::environment::compiler_has_avx512f) {
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
 		return Simd128UInt64(_mm_rolv_epi64(a.v, _mm_set1_epi64x(n)));
 	}
 	else {
@@ -785,7 +795,7 @@ inline static Simd128UInt64 rotl(const Simd128UInt64& a, int bits) {
 
 inline static Simd128UInt64 rotr(const Simd128UInt64& a, int bits) {
 	const int n = bits & 63;
-	if constexpr (mt::environment::compiler_has_avx512f) {
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
 		return Simd128UInt64(_mm_rorv_epi64(a.v, _mm_set1_epi64x(n)));
 	}
 	else {

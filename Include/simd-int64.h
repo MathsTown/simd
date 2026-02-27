@@ -32,7 +32,7 @@ Simd256Int64		- x86_64 Microarchitecture Level 3.
 					- Requires AVX, AVX2 and FMA support.
 
 Simd512Int64		- x86_64 Microarchitecture Level 4.
-					- Requires AVX512F, AVX512DQ, ACX512VL, AVX512CD, AVX512BW
+					- Requires AVX512F, AVX512DQ, AVX512VL, AVX512CD, AVX512BW
 
 SimdNativeInt64	- A Typedef referring to one of the above types.  Chosen based on compiler support/mode.
 					- Just use this type in your code if you are building for a specific platform.
@@ -43,8 +43,8 @@ Unless you are using a SimdNative typedef, you must check for CPU support before
 - MSVC - You may check at runtime or compile time.  (compile time checks generally results in much faster code)
 - GCC/Clang - You must check at compile time (due to compiler limitations)
 
-Types reqpresenting floats, doubles, ints, longs etc are arranged in microarchitecture level groups.
-Generally CPUs have more SIMD support for floats than ints (and 64 bit is better than 64-bit).
+Types representing floats, doubles, ints, longs etc are arranged in microarchitecture level groups.
+Generally CPUs have more SIMD support for floats than ints (and 32-bit is better than 64-bit).
 Ensure the CPU supports the full "level" if you need to use more than one type.
 
 
@@ -63,8 +63,12 @@ code than compiling with full compiler support.  Visual studio will optimise AVX
 If you are able, I recommend distributing code at different support levels. (1,3,4). Let the user choose which to download,
 or your installer can make the switch.  It is also possible to dynamically load different .dlls
 
+- Simd128/256/512 describe lane shape and API width and correspond to level 1, 2 & 4.
+- When the compiler detects higher levels of support, such as SSE4.1 (level 2), more optimised instructions may be chosen.
+- Runtime checks are only meaningful for builds intended to run across mixed CPU capabilities, but separate compilation in recommended.
+
 WASM Support:
-I've included FallbackFloat64 for use with Emscripen, but use SimdNativeFloat64 as SIMD support will be added soon.
+I've included FallbackInt64 for use with Emscripen.
 
 
 *********************************************************************************************************/
@@ -208,6 +212,12 @@ inline static FallbackInt64 abs(FallbackInt64 a) noexcept {
 #if MT_SIMD_ARCH_X64
 #include <immintrin.h>
 
+
+/**************************************************************************************************
+ * Compiler Compatability Layer
+ * MSCV intrinsics are sometime a little more feature rich than GCC and Clang.  
+ * This section provides shims and patches for compiler incompatible behaviour.
+ * ************************************************************************************************/
 namespace mt::simd_detail_i64 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline int64_t lane_get(__m128i v, int i) noexcept {
@@ -875,7 +885,7 @@ static_assert(SimdSigned<Simd256Int64>, "Simd256Int64 does not implement the con
 static_assert(SimdSigned<Simd512Int64>, "Simd512Int64 does not implement the concept SimdSigned");
 #endif
 
-static_assert(SimdInt<Simd128Int64>, "Simd256Int64 does not implement the concept SimdInt");
+static_assert(SimdInt<Simd128Int64>, "Simd128Int64 does not implement the concept SimdInt");
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
 static_assert(SimdInt<Simd256Int64>, "Simd256Int64 does not implement the concept SimdInt");
 #endif

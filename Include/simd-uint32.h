@@ -23,18 +23,18 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Basic SIMD Types for 32-bit Unsigned Integers:
 
-FallbackUint64		- Works on all build modes and CPUs.  Forwards most requests to the standard library.
+FallbackUInt32		- Works on all build modes and CPUs.  Forwards most requests to the standard library.
 
-Simd128Uint64		- x86_64 Microarchitecture Level 1 - Works on all x86_64 CPUs.
+Simd128UInt32		- x86_64 Microarchitecture Level 1 - Works on all x86_64 CPUs.
 					- Requires SSE and SSE2 support.  Will use SSE4.1 instructions when __SSE4_1__ or __AVX__ defined.
 
-Simd256Uint64		- x86_64 Microarchitecture Level 3.
+Simd256UInt32		- x86_64 Microarchitecture Level 3.
 					- Requires AVX, AVX2 and FMA support.
 
-Simd512Uint64		- x86_64 Microarchitecture Level 4.
-					- Requires AVX512F, AVX512DQ, ACX512VL, AVX512CD, AVX512BW
+Simd512UInt32		- x86_64 Microarchitecture Level 4.
+					- Requires AVX512F, AVX512DQ, AVX512VL, AVX512CD, AVX512BW
 
-SimdNativeUint64	- A Typedef referring to one of the above types.  Chosen based on compiler support/mode.
+SimdNativeUInt32	- A Typedef referring to one of the above types.  Chosen based on compiler support/mode.
 					- Just use this type in your code if you are building for a specific platform.
 
 
@@ -43,7 +43,7 @@ Unless you are using a SimdNative typedef, you must check for CPU support before
 - MSVC - You may check at runtime or compile time.  (compile time checks generally results in much faster code)
 - GCC/Clang - You must check at compile time (due to compiler limitations)
 
-Types reqpresenting floats, doubles, ints, longs etc are arranged in microarchitecture level groups.
+Types representing floats, doubles, ints, longs etc are arranged in microarchitecture level groups.
 Generally CPUs have more SIMD support for floats than ints (and 32 bit is better than 64-bit).
 Ensure the CPU supports the full "level" if you need to use more than one type.
 
@@ -63,8 +63,12 @@ code than compiling with full compiler support.  Visual studio will optimise AVX
 If you are able, I recommend distributing code at different support levels. (1,3,4). Let the user choose which to download,
 or your installer can make the switch.  It is also possible to dynamically load different .dlls
 
+- Simd128/256/512 describe lane shape and API width and correspond to level 1, 2 & 4.
+- When the compiler detects higher levels of support, such as SSE4.1 (level 2), more optimised instructions may be chosen when available.
+- Runtime checks are only meaningful for builds intended to run across mixed CPU capabilities, but separate compilation in recommended.
+
 WASM Support:
-I've included FallbackFloat32 for use with Emscripen, but use SimdNativeFloat32 as SIMD support will be added soon.
+I've included FallbackUInt32 for use with Emscripen, but use SimdNativeUInt32 as SIMD support will be added soon.
 
 
 *********************************************************************************************************/
@@ -218,6 +222,12 @@ inline static FallbackUInt32 max(FallbackUInt32 a, FallbackUInt32 b) { return Fa
 #if MT_SIMD_ARCH_X64
 #include <immintrin.h>
 
+
+/**************************************************************************************************
+ * Compiler Compatability Layer
+ * MSCV intrinsics are sometime a little more feature rich than GCC and Clang.  
+ * This section provides shims and patches for compiler incompatible behaviour.
+ * ************************************************************************************************/
 namespace mt::simd_detail_u32 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline uint32_t lane_get(__m128i v, int i) noexcept {
@@ -724,7 +734,7 @@ inline static Simd128UInt32 operator>>(const Simd128UInt32& lhs, const int bits)
 
 inline static Simd128UInt32 rotl(const Simd128UInt32& a, int bits) { 
 	const int n = bits & 31;
-	if constexpr (mt::environment::compiler_has_avx512f) {
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
 		return Simd128UInt32(_mm_rolv_epi32(a.v, _mm_set1_epi32(n)));
 	}
 	else {
@@ -738,7 +748,7 @@ inline static Simd128UInt32 rotl(const Simd128UInt32& a, int bits) {
 
 inline static Simd128UInt32 rotr(const Simd128UInt32& a, int bits) { 
 	const int n = bits & 31;
-	if constexpr (mt::environment::compiler_has_avx512f) {
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
 		return Simd128UInt32(_mm_rorv_epi32(a.v, _mm_set1_epi32(n)));
 	}
 	else {
@@ -792,7 +802,7 @@ inline static Simd128UInt32 max(Simd128UInt32 a, Simd128UInt32 b) {
  * (Not sure why this fails on intelisense, but compliles ok.)
  * ************************************************************************************************/
 static_assert(Simd<FallbackUInt32>, "FallbackUInt32 does not implement the concept Simd");
-static_assert(SimdUInt<FallbackUInt32>, "FallbackUInt32 does not implement the concept SimdUint");
+static_assert(SimdUInt<FallbackUInt32>, "FallbackUInt32 does not implement the concept SimdUInt");
 static_assert(SimdUInt32<FallbackUInt32>, "FallbackUInt32 does not implement the concept SimdUInt32");
 
 #if MT_SIMD_ARCH_X64
@@ -804,12 +814,12 @@ static_assert(Simd<Simd256UInt32>, "Simd256UInt32 does not implement the concept
 static_assert(Simd<Simd512UInt32>, "Simd512UInt32 does not implement the concept Simd");
 #endif
 
-static_assert(SimdUInt<Simd128UInt32>, "Simd256UInt32 does not implement the concept SimdUint");
+static_assert(SimdUInt<Simd128UInt32>, "Simd128UInt32 does not implement the concept SimdUInt");
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
-static_assert(SimdUInt<Simd256UInt32>, "Simd256UInt32 does not implement the concept SimdUint");
+static_assert(SimdUInt<Simd256UInt32>, "Simd256UInt32 does not implement the concept SimdUInt");
 #endif
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
-static_assert(SimdUInt<Simd512UInt32>, "Simd512UInt32 does not implement the concept SimdUint");
+static_assert(SimdUInt<Simd512UInt32>, "Simd512UInt32 does not implement the concept SimdUInt");
 #endif
 
 

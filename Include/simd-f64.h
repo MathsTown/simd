@@ -312,6 +312,12 @@ inline static FallbackFloat64 blend(const FallbackFloat64 if_false, const Fallba
 #if MT_SIMD_ARCH_X64
 #include <immintrin.h>
 
+
+/**************************************************************************************************
+ * Compiler Compatability Layer
+ * MSCV intrinsics are sometime a little more feature rich than GCC and Clang.  
+ * This section provides shims and patches for compiler incompatible behaviour.
+ * ************************************************************************************************/
 #if MT_SIMD_USE_PORTABLE_X86_SHIMS && MT_USE_SLEEF
 	#if !defined(__has_include)
 		#error "MT_USE_SLEEF requires __has_include support."

@@ -78,6 +78,7 @@ I've included FallbackFloat32 for use with Emscripen, but use SimdNativeFloat32 
 #include "environment.h"
 #include "simd-cpuid.h"
 #include "simd-concepts.h"
+#include "simd-mask.h"
 #include "simd-uint32.h"
 #include "simd-uint64.h"
 
@@ -965,14 +966,6 @@ inline static Simd512Float32 blend(const Simd512Float32 if_false, const Simd512F
 }
 
 
-inline static bool test_all_false(__mmask16 mask) {
-	return mask == (__mmask16)0x0000;
-}
-inline static bool test_all_true(__mmask16 mask) {
-	return mask == (__mmask16)0xFFFF;
-}
-
-
 
 /***************************************************************************************************************************************************************************************************
  * SIMD 256 type.  Contains 8 x 32bit Floats
@@ -1286,14 +1279,6 @@ inline static __m256 isnan(const Simd256Float32 a) noexcept { return _mm256_cmp_
 [[nodiscard("Value Calculated and not used (blend)")]]
 inline static Simd256Float32 blend(const Simd256Float32 if_false, const Simd256Float32 if_true, __m256 mask) noexcept {
 	return Simd256Float32(_mm256_blendv_ps(if_false.v, if_true.v, mask));	
-}
-
-
-inline static bool test_all_false(__m256 mask) {
-	return _mm256_testz_ps(mask, mask);
-}
-inline static bool test_all_true(__m256 mask) {
-	return _mm256_testc_ps(mask, _mm256_set1_ps(std::bit_cast<float>(0xFFFFFFFF)));
 }
 
 
@@ -1659,13 +1644,6 @@ inline static Simd128Float32 blend(const Simd128Float32 if_false, const Simd128F
 	else {
 		return Simd128Float32(_mm_or_ps(_mm_andnot_ps(mask,if_false.v), _mm_and_ps(mask, if_true.v)));
 	}
-}
-
-inline static bool test_all_false(__m128 mask) {
-	return _mm_testz_ps(mask, mask);
-}
-inline static bool test_all_true(__m128 mask) {
-	return _mm_testc_ps(mask, _mm_set1_ps(std::bit_cast<float>(0xFFFFFFFF)));
 }
 
 

@@ -80,6 +80,7 @@ I've included FallbackInt64 for use with Emscripen.
 #include <cstring>
 #include "simd-cpuid.h"
 #include "simd-concepts.h"
+#include "simd-mask.h"
 
 /**************************************************************************************************
 * Fallback Int64 type.
@@ -94,6 +95,7 @@ I've included FallbackInt64 for use with Emscripen.
 struct FallbackInt64 {
 	int64_t v;
 	typedef int64_t F;
+	typedef bool MaskType;
 	FallbackInt64() = default;
 	FallbackInt64(int64_t a) : v(a) {};
 
@@ -205,6 +207,16 @@ inline static FallbackInt64 abs(FallbackInt64 a) noexcept {
 	const uint64_t mask = 0ull - sign;
 	const uint64_t mag = (ux ^ mask) + sign;
 	return FallbackInt64(static_cast<int64_t>(mag));
+}
+
+//*****Conditional Functions*****
+inline static bool compare_equal(const FallbackInt64 a, const FallbackInt64 b) noexcept { return a.v == b.v; }
+inline static bool compare_less(const FallbackInt64 a, const FallbackInt64 b) noexcept { return a.v < b.v; }
+inline static bool compare_less_equal(const FallbackInt64 a, const FallbackInt64 b) noexcept { return a.v <= b.v; }
+inline static bool compare_greater(const FallbackInt64 a, const FallbackInt64 b) noexcept { return a.v > b.v; }
+inline static bool compare_greater_equal(const FallbackInt64 a, const FallbackInt64 b) noexcept { return a.v >= b.v; }
+inline static FallbackInt64 blend(const FallbackInt64 if_false, const FallbackInt64 if_true, bool mask) noexcept {
+	return mask ? if_true : if_false;
 }
 
 
@@ -327,6 +339,7 @@ namespace mt::simd_detail_i64 {
 struct Simd512Int64 {
 	__m512i v;
 	typedef int64_t F;
+	typedef __mmask8 MaskType;
 
 	Simd512Int64() = default;
 	Simd512Int64(__m512i a) : v(a) {};
@@ -456,6 +469,26 @@ inline static Simd512Int64 max(Simd512Int64 a, Simd512Int64 b) { return Simd512I
 //*****Mathematical*****
 inline static Simd512Int64 abs(Simd512Int64 a) { return Simd512Int64(_mm512_abs_epi64(a.v)); }
 
+//*****Conditional Functions*****
+inline static __mmask8 compare_equal(const Simd512Int64 a, const Simd512Int64 b) noexcept {
+	return _mm512_cmp_epi64_mask(a.v, b.v, _MM_CMPINT_EQ);
+}
+inline static __mmask8 compare_less(const Simd512Int64 a, const Simd512Int64 b) noexcept {
+	return _mm512_cmp_epi64_mask(a.v, b.v, _MM_CMPINT_LT);
+}
+inline static __mmask8 compare_less_equal(const Simd512Int64 a, const Simd512Int64 b) noexcept {
+	return _mm512_cmp_epi64_mask(a.v, b.v, _MM_CMPINT_LE);
+}
+inline static __mmask8 compare_greater(const Simd512Int64 a, const Simd512Int64 b) noexcept {
+	return _mm512_cmp_epi64_mask(a.v, b.v, _MM_CMPINT_NLE);
+}
+inline static __mmask8 compare_greater_equal(const Simd512Int64 a, const Simd512Int64 b) noexcept {
+	return _mm512_cmp_epi64_mask(a.v, b.v, _MM_CMPINT_NLT);
+}
+inline static Simd512Int64 blend(const Simd512Int64 if_false, const Simd512Int64 if_true, __mmask8 mask) noexcept {
+	return Simd512Int64(_mm512_mask_blend_epi64(mask, if_false.v, if_true.v));
+}
+
 #endif // MT_SIMD_ALLOW_LEVEL4_TYPES
 
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
@@ -466,6 +499,7 @@ inline static Simd512Int64 abs(Simd512Int64 a) { return Simd512Int64(_mm512_abs_
 struct Simd256Int64 {
 	__m256i v;
 	typedef int64_t F;
+	typedef __m256i MaskType;
 
 	Simd256Int64() = default;
 	Simd256Int64(__m256i a) : v(a) {};
@@ -656,6 +690,20 @@ inline static Simd256Int64 abs(Simd256Int64 a) {
 	}
 }
 
+//*****Conditional Functions*****
+inline static __m256i compare_equal(const Simd256Int64 a, const Simd256Int64 b) noexcept { return _mm256_cmpeq_epi64(a.v, b.v); }
+inline static __m256i compare_less(const Simd256Int64 a, const Simd256Int64 b) noexcept { return _mm256_cmpgt_epi64(b.v, a.v); }
+inline static __m256i compare_less_equal(const Simd256Int64 a, const Simd256Int64 b) noexcept {
+	return _mm256_xor_si256(_mm256_cmpgt_epi64(a.v, b.v), _mm256_set1_epi64x(-1));
+}
+inline static __m256i compare_greater(const Simd256Int64 a, const Simd256Int64 b) noexcept { return _mm256_cmpgt_epi64(a.v, b.v); }
+inline static __m256i compare_greater_equal(const Simd256Int64 a, const Simd256Int64 b) noexcept {
+	return _mm256_xor_si256(_mm256_cmpgt_epi64(b.v, a.v), _mm256_set1_epi64x(-1));
+}
+inline static Simd256Int64 blend(const Simd256Int64 if_false, const Simd256Int64 if_true, __m256i mask) noexcept {
+	return Simd256Int64(_mm256_blendv_epi8(if_false.v, if_true.v, mask));
+}
+
 
 
 
@@ -673,6 +721,7 @@ inline static Simd256Int64 abs(Simd256Int64 a) {
 struct Simd128Int64 {
 	__m128i v;
 	typedef int64_t F;
+	typedef __m128i MaskType;
 
 	Simd128Int64() = default;
 	Simd128Int64(__m128i a) : v(a) {};
@@ -875,10 +924,104 @@ inline static Simd128Int64 abs(Simd128Int64 a) {
 	}
 }
 
+//*****Conditional Functions*****
+inline static __m128i compare_equal(const Simd128Int64 a, const Simd128Int64 b) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_1) {
+		return _mm_cmpeq_epi64(a.v, b.v);
+	}
+	else {
+		const int64_t m1 = (a.element(1) == b.element(1)) ? -1ll : 0ll;
+		const int64_t m0 = (a.element(0) == b.element(0)) ? -1ll : 0ll;
+		return _mm_set_epi64x(m1, m0);
+	}
+}
+inline static __m128i compare_less(const Simd128Int64 a, const Simd128Int64 b) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_2) {
+		return _mm_cmpgt_epi64(b.v, a.v);
+	}
+	else {
+		const int64_t m1 = (a.element(1) < b.element(1)) ? -1ll : 0ll;
+		const int64_t m0 = (a.element(0) < b.element(0)) ? -1ll : 0ll;
+		return _mm_set_epi64x(m1, m0);
+	}
+}
+inline static __m128i compare_less_equal(const Simd128Int64 a, const Simd128Int64 b) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_2) {
+		return _mm_xor_si128(_mm_cmpgt_epi64(a.v, b.v), _mm_set1_epi64x(-1));
+	}
+	else {
+		const int64_t m1 = (a.element(1) <= b.element(1)) ? -1ll : 0ll;
+		const int64_t m0 = (a.element(0) <= b.element(0)) ? -1ll : 0ll;
+		return _mm_set_epi64x(m1, m0);
+	}
+}
+inline static __m128i compare_greater(const Simd128Int64 a, const Simd128Int64 b) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_2) {
+		return _mm_cmpgt_epi64(a.v, b.v);
+	}
+	else {
+		const int64_t m1 = (a.element(1) > b.element(1)) ? -1ll : 0ll;
+		const int64_t m0 = (a.element(0) > b.element(0)) ? -1ll : 0ll;
+		return _mm_set_epi64x(m1, m0);
+	}
+}
+inline static __m128i compare_greater_equal(const Simd128Int64 a, const Simd128Int64 b) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_2) {
+		return _mm_xor_si128(_mm_cmpgt_epi64(b.v, a.v), _mm_set1_epi64x(-1));
+	}
+	else {
+		const int64_t m1 = (a.element(1) >= b.element(1)) ? -1ll : 0ll;
+		const int64_t m0 = (a.element(0) >= b.element(0)) ? -1ll : 0ll;
+		return _mm_set_epi64x(m1, m0);
+	}
+}
+inline static Simd128Int64 blend(const Simd128Int64 if_false, const Simd128Int64 if_true, __m128i mask) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_1) {
+		return Simd128Int64(_mm_blendv_epi8(if_false.v, if_true.v, mask));
+	}
+	else {
+		return Simd128Int64(_mm_or_si128(_mm_andnot_si128(mask, if_false.v), _mm_and_si128(mask, if_true.v)));
+	}
+}
+
 
 #endif //x86_64
 
 
+
+
+/**************************************************************************************************
+ * Templated Functions for all types
+ * ************************************************************************************************/
+template <SimdInt64 T>
+[[nodiscard("Value Calculated and not used (if_equal)")]]
+inline static T if_equal(const T value_a, const T value_b, const T if_true, const T if_false) noexcept {
+	return blend(if_false, if_true, compare_equal(value_a, value_b));
+}
+
+template <SimdInt64 T>
+[[nodiscard("Value Calculated and not used (if_less)")]]
+inline static T if_less(const T value_a, const T value_b, const T if_true, const T if_false) noexcept {
+	return blend(if_false, if_true, compare_less(value_a, value_b));
+}
+
+template <SimdInt64 T>
+[[nodiscard("Value Calculated and not used (if_less_equal)")]]
+inline static T if_less_equal(const T value_a, const T value_b, const T if_true, const T if_false) noexcept {
+	return blend(if_false, if_true, compare_less_equal(value_a, value_b));
+}
+
+template <SimdInt64 T>
+[[nodiscard("Value Calculated and not used (if_greater)")]]
+inline static T if_greater(const T value_a, const T value_b, const T if_true, const T if_false) noexcept {
+	return blend(if_false, if_true, compare_greater(value_a, value_b));
+}
+
+template <SimdInt64 T>
+[[nodiscard("Value Calculated and not used (if_greater_equal)")]]
+inline static T if_greater_equal(const T value_a, const T value_b, const T if_true, const T if_false) noexcept {
+	return blend(if_false, if_true, compare_greater_equal(value_a, value_b));
+}
 
 
 
@@ -890,6 +1033,7 @@ static_assert(Simd<FallbackInt64>, "FallbackInt64 does not implement the concept
 static_assert(SimdSigned<FallbackInt64>, "FallbackInt64 does not implement the concept SimdSigned");
 static_assert(SimdInt<FallbackInt64>, "FallbackInt64 does not implement the concept SimdInt");
 static_assert(SimdInt64<FallbackInt64>, "FallbackInt64 does not implement the concept SimdInt64");
+static_assert(SimdCompareOps<FallbackInt64>, "FallbackInt64 does not implement the concept SimdCompareOps");
 
 #if MT_SIMD_ARCH_X64
 static_assert(Simd<Simd128Int64>, "Simd128Int64 does not implement the concept Simd");
@@ -919,11 +1063,14 @@ static_assert(SimdInt<Simd512Int64>, "Simd512Int64 does not implement the concep
 
 
 static_assert(SimdInt64<Simd128Int64>, "Simd128Int64 does not implement the concept SimdInt64");
+static_assert(SimdCompareOps<Simd128Int64>, "Simd128Int64 does not implement the concept SimdCompareOps");
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
 static_assert(SimdInt64<Simd256Int64>, "Simd256Int64 does not implement the concept SimdInt64");
+static_assert(SimdCompareOps<Simd256Int64>, "Simd256Int64 does not implement the concept SimdCompareOps");
 #endif
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
 static_assert(SimdInt64<Simd512Int64>, "Simd512Int64 does not implement the concept SimdInt64");
+static_assert(SimdCompareOps<Simd512Int64>, "Simd512Int64 does not implement the concept SimdCompareOps");
 #endif
 #endif
 

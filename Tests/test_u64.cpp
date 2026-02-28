@@ -552,6 +552,101 @@ bool run_uint64_minmax_test_for_type(const std::string& type_name, CpuInformatio
 }
 
 template <typename SimdType>
+bool run_uint64_compare_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " UInt64 compare/blend";
+    if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
+        return true;
+    }
+
+    constexpr int lanes = SimdType::number_of_elements();
+    std::mt19937_64 rng(20260224ull);
+    std::uniform_int_distribution<uint64_t> dist(0ull, std::numeric_limits<uint64_t>::max());
+
+    for (int iteration = 0; iteration < 700; ++iteration) {
+        alignas(SimdType) SimdType a{};
+        alignas(SimdType) SimdType b{};
+        alignas(SimdType) SimdType if_true{};
+        alignas(SimdType) SimdType if_false{};
+        alignas(SimdType) SimdType zero(0ull);
+        alignas(SimdType) SimdType ones(std::numeric_limits<uint64_t>::max());
+        alignas(SimdType) SimdType b_diff{};
+
+        for (int lane = 0; lane < lanes; ++lane) {
+            const uint64_t av = dist(rng);
+            const uint64_t bv = dist(rng);
+            set_lane(a, lane, av);
+            set_lane(b, lane, bv);
+            set_lane(if_true, lane, dist(rng));
+            set_lane(if_false, lane, dist(rng));
+            set_lane(b_diff, lane, av ^ 1ull);
+        }
+
+        const auto mask_eq = compare_equal(a, b);
+        const auto mask_lt = compare_less(a, b);
+        const auto mask_le = compare_less_equal(a, b);
+        const auto mask_gt = compare_greater(a, b);
+        const auto mask_ge = compare_greater_equal(a, b);
+
+        const SimdType blend_eq = blend(zero, ones, mask_eq);
+        const SimdType blend_lt = blend(zero, ones, mask_lt);
+        const SimdType blend_le = blend(zero, ones, mask_le);
+        const SimdType blend_gt = blend(zero, ones, mask_gt);
+        const SimdType blend_ge = blend(zero, ones, mask_ge);
+
+        const SimdType if_eq = if_equal(a, b, if_true, if_false);
+        const SimdType if_lt = if_less(a, b, if_true, if_false);
+        const SimdType if_le = if_less_equal(a, b, if_true, if_false);
+        const SimdType if_gt = if_greater(a, b, if_true, if_false);
+        const SimdType if_ge = if_greater_equal(a, b, if_true, if_false);
+
+        for (int lane = 0; lane < lanes; ++lane) {
+            const FallbackUInt64 fa(a.element(lane));
+            const FallbackUInt64 fb(b.element(lane));
+            const bool eq = compare_equal(fa, fb);
+            const bool lt = compare_less(fa, fb);
+            const bool le = compare_less_equal(fa, fb);
+            const bool gt = compare_greater(fa, fb);
+            const bool ge = compare_greater_equal(fa, fb);
+
+            const uint64_t all_ones = std::numeric_limits<uint64_t>::max();
+            if (blend_eq.element(lane) != (eq ? all_ones : 0ull) ||
+                blend_lt.element(lane) != (lt ? all_ones : 0ull) ||
+                blend_le.element(lane) != (le ? all_ones : 0ull) ||
+                blend_gt.element(lane) != (gt ? all_ones : 0ull) ||
+                blend_ge.element(lane) != (ge ? all_ones : 0ull)) {
+                harness.add_result(test_name, false, "blend(compare) mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+
+            const uint64_t t = if_true.element(lane);
+            const uint64_t f = if_false.element(lane);
+            if (if_eq.element(lane) != (eq ? t : f) ||
+                if_lt.element(lane) != (lt ? t : f) ||
+                if_le.element(lane) != (le ? t : f) ||
+                if_gt.element(lane) != (gt ? t : f) ||
+                if_ge.element(lane) != (ge ? t : f)) {
+                harness.add_result(test_name, false, "if_* mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+
+        const auto all_true_mask = compare_equal(a, a);
+        const auto all_false_mask = compare_equal(a, b_diff);
+        if (!test_all_true(all_true_mask) || test_all_false(all_true_mask)) {
+            harness.add_result(test_name, false, "test_all_true/false failed for all-true mask");
+            return false;
+        }
+        if (!test_all_false(all_false_mask) || test_all_true(all_false_mask)) {
+            harness.add_result(test_name, false, "test_all_true/false failed for all-false mask");
+            return false;
+        }
+    }
+
+    harness.add_result(test_name, true, "compare/blend/if_* matched fallback");
+    return true;
+}
+
+template <typename SimdType>
 bool run_uint64_binary_test_for_type(
     const std::string& type_name,
     const std::string& op_name,
@@ -647,6 +742,7 @@ bool run_uint64_suite_for_type(const char* type_name, CpuInformation cpu, TestHa
            run_uint64_binary_test_for_type<SimdType>(type_name, "multiplication", ArithmeticOp::mul, cpu, harness) &&
            run_uint64_binary_test_for_type<SimdType>(type_name, "division", ArithmeticOp::div, cpu, harness) &&
            run_uint64_minmax_test_for_type<SimdType>(type_name, cpu, harness) &&
+           run_uint64_compare_test_for_type<SimdType>(type_name, cpu, harness) &&
            run_uint64_bitwise_test_for_type<SimdType>(type_name, cpu, harness) &&
            run_uint64_shift_test_for_type<SimdType>(type_name, cpu, harness);
 }

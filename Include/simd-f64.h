@@ -194,7 +194,7 @@ inline static FallbackFloat64 operator*(double lhs, FallbackFloat64 rhs) noexcep
 //*****Division Operators*****
 inline static FallbackFloat64 operator/(FallbackFloat64  lhs, const FallbackFloat64& rhs) noexcept { lhs /= rhs;	return lhs; }
 inline static FallbackFloat64 operator/(FallbackFloat64  lhs, double rhs) noexcept { lhs /= rhs; return lhs; }
-inline static FallbackFloat64 operator/(const double lhs, const FallbackFloat64& rhs) noexcept { return FallbackFloat64(lhs - rhs.v); }
+inline static FallbackFloat64 operator/(const double lhs, const FallbackFloat64& rhs) noexcept { return FallbackFloat64(lhs / rhs.v); }
 
 //*****Fused Multiply Add Fallbacks*****
 // Fused Multiply Add (a*b+c)
@@ -234,7 +234,7 @@ inline static FallbackFloat64 min(FallbackFloat64 a, FallbackFloat64 b) { return
 inline static FallbackFloat64 max(FallbackFloat64 a, FallbackFloat64 b) { return FallbackFloat64(std::max(a.v, b.v)); }
 
 //*****Approximate Functions*****
-inline static FallbackFloat64 reciprocal_approx(FallbackFloat64 a) { return FallbackFloat64(1.0f / a.v); }
+inline static FallbackFloat64 reciprocal_approx(FallbackFloat64 a) { return FallbackFloat64(1.0 / a.v); }
 
 //*****Mathematical Functions*****
 inline static FallbackFloat64 sqrt(FallbackFloat64 a) { return FallbackFloat64(std::sqrt(a.v)); }
@@ -730,7 +730,7 @@ struct Simd512Float64 {
 
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same class may not be supported) 
 	static bool cpu_supported(CpuInformation cpuid) {
-		return cpuid.has_avx512_f();
+		return cpuid.has_avx512_f() && cpuid.has_avx512_dq() && cpuid.has_avx512_vl() && cpuid.has_avx512_bw() && cpuid.has_avx512_cd();
 	}
 
 	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
@@ -748,7 +748,7 @@ struct Simd512Float64 {
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
 	static constexpr bool compiler_supported() {
-		return mt::environment::compiler_has_avx512f;
+		return mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512dq && mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512bw && mt::environment::compiler_has_avx512cd;
 	}
 
 	//Performs a compile time supprot to see if the microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
@@ -1427,7 +1427,14 @@ inline static Simd128Float64 ceil(Simd128Float64 a) noexcept {
 }
 
 [[nodiscard("Value calculated and not used (trunc)")]]
-inline static Simd128Float64 trunc(Simd128Float64 a) noexcept { return Simd128Float64(_mm_trunc_pd(a.v)); } //SSE1
+inline static Simd128Float64 trunc(Simd128Float64 a) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_1) {
+		return Simd128Float64(_mm_round_pd(a.v, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); //SSE4.1
+	}
+	else {
+		return Simd128Float64(_mm_set_pd(std::trunc(a.element(1)), std::trunc(a.element(0))));
+	}
+}
 
 [[nodiscard("Value calculated and not used (round)")]]
 inline static Simd128Float64 round(Simd128Float64 a) noexcept {

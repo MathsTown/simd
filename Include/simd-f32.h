@@ -181,7 +181,7 @@ inline static FallbackFloat32 operator*(float lhs, FallbackFloat32 rhs) noexcept
 //*****Division Operators*****
 inline static FallbackFloat32 operator/(FallbackFloat32  lhs, const FallbackFloat32& rhs) noexcept { lhs /= rhs;	return lhs; }
 inline static FallbackFloat32 operator/(FallbackFloat32  lhs, float rhs) noexcept { lhs /= rhs; return lhs; }
-inline static FallbackFloat32 operator/(const float lhs, const FallbackFloat32& rhs) noexcept { return FallbackFloat32(lhs - rhs.v); }
+inline static FallbackFloat32 operator/(const float lhs, const FallbackFloat32& rhs) noexcept { return FallbackFloat32(lhs / rhs.v); }
 
 
 //*****Fused Multiply Add Fallbacks*****
@@ -672,12 +672,12 @@ struct Simd512Float32 {
 
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same class may not be supported) 
 	static bool cpu_supported(CpuInformation cpuid) {
-		return cpuid.has_avx512_f();
+		return cpuid.has_avx512_f() && cpuid.has_avx512_dq() && cpuid.has_avx512_vl() && cpuid.has_avx512_bw() && cpuid.has_avx512_cd();
 	}
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
 	static constexpr bool compiler_supported() {
-		return mt::environment::compiler_has_avx512f;
+		return mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512dq && mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512bw && mt::environment::compiler_has_avx512cd;
 	}
 
 	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
@@ -1321,7 +1321,7 @@ struct Simd128Float32 {
 	}
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same the same level may not be supported) 
 	static bool cpu_supported(CpuInformation cpuid) {
-		return cpuid.has_sse() && cpuid.has_sse2() && cpuid.has_sse41();
+		return cpuid.has_sse() && cpuid.has_sse2();
 	}
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
@@ -1337,7 +1337,7 @@ struct Simd128Float32 {
 
 	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
 	static bool cpu_level_supported(CpuInformation cpuid) {
-		return cpuid.has_sse() && cpuid.has_sse2() && cpuid.has_sse41();
+		return cpuid.has_sse() && cpuid.has_sse2();
 	}
 
 	//Performs a compile time support to see if the microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
@@ -1429,7 +1429,14 @@ inline static Simd128Float32 ceil(Simd128Float32 a) noexcept {
 }
 
 [[nodiscard("Value calculated and not used (trunc)")]]
-inline static Simd128Float32 trunc(Simd128Float32 a) noexcept { return Simd128Float32(_mm_trunc_ps(a.v)); } //SSE1
+inline static Simd128Float32 trunc(Simd128Float32 a) noexcept {
+	if constexpr (mt::environment::compiler_has_sse4_1) {
+		return Simd128Float32(_mm_round_ps(a.v, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC)); //SSE4.1
+	}
+	else {
+		return Simd128Float32(_mm_set_ps(std::trunc(a.element(3)), std::trunc(a.element(2)), std::trunc(a.element(1)), std::trunc(a.element(0))));
+	}
+}
 
 [[nodiscard("Value calculated and not used (round)")]]
 inline static Simd128Float32 round(Simd128Float32 a) noexcept {

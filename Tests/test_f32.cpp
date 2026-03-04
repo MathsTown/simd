@@ -126,6 +126,13 @@ bool float_matches_fallback(float actual, float expected) {
     return abs_diff <= (2.0e-6f * scale);
 }
 
+bool float_matches_exact(float actual, float expected) {
+    if (std::isnan(actual) && std::isnan(expected)) {
+        return true;
+    }
+    return std::bit_cast<uint32_t>(actual) == std::bit_cast<uint32_t>(expected);
+}
+
 float apply_fallback_binary(float lhs, float rhs, ArithmeticOp op) {
     if (op == ArithmeticOp::add) {
         return (FallbackFloat32(lhs) + FallbackFloat32(rhs)).v;
@@ -148,27 +155,24 @@ void apply_simd_op_with_path(
     ArithmeticPath path,
     SimdType& out) {
     if (path == ArithmeticPath::vector_vector) {
-        out = a;
-        if (op == ArithmeticOp::add) { out += b; return; }
-        if (op == ArithmeticOp::sub) { out -= b; return; }
-        if (op == ArithmeticOp::mul) { out *= b; return; }
-        out /= b;
+        if (op == ArithmeticOp::add) { out = a + b; return; }
+        if (op == ArithmeticOp::sub) { out = a - b; return; }
+        if (op == ArithmeticOp::mul) { out = a * b; return; }
+        out = a / b;
         return;
     }
     if (path == ArithmeticPath::vector_scalar_right) {
-        out = a;
-        if (op == ArithmeticOp::add) { out += scalar; return; }
-        if (op == ArithmeticOp::sub) { out -= scalar; return; }
-        if (op == ArithmeticOp::mul) { out *= scalar; return; }
-        out /= scalar;
+        if (op == ArithmeticOp::add) { out = a + scalar; return; }
+        if (op == ArithmeticOp::sub) { out = a - scalar; return; }
+        if (op == ArithmeticOp::mul) { out = a * scalar; return; }
+        out = a / scalar;
         return;
     }
     if (path == ArithmeticPath::scalar_left_vector) {
-        out = SimdType(scalar);
-        if (op == ArithmeticOp::add) { out += b; return; }
-        if (op == ArithmeticOp::sub) { out -= b; return; }
-        if (op == ArithmeticOp::mul) { out *= b; return; }
-        out /= b;
+        if (op == ArithmeticOp::add) { out = scalar + b; return; }
+        if (op == ArithmeticOp::sub) { out = scalar - b; return; }
+        if (op == ArithmeticOp::mul) { out = scalar * b; return; }
+        out = scalar / b;
         return;
     }
 
@@ -592,7 +596,7 @@ bool run_float32_binary_test_for_type(
                 const float rhs = b.element(lane);
                 const float expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
                 const float actual = result.element(lane);
-                if (!float_matches_fallback(actual, expected)) {
+                if (!float_matches_exact(actual, expected)) {
                     harness.add_result(
                         test_name,
                         false,
@@ -641,7 +645,7 @@ bool run_float32_binary_test_for_type(
                 const float rhs = b.element(lane);
                 const float expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
                 const float actual = result.element(lane);
-                if (!float_matches_fallback(actual, expected)) {
+                if (!float_matches_exact(actual, expected)) {
                     harness.add_result(
                         test_name,
                         false,
@@ -685,7 +689,7 @@ bool run_float32_binary_test_for_type(
                 const float rhs = b.element(lane);
                 const float expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
                 const float actual = result.element(lane);
-                if (!float_matches_fallback(actual, expected)) {
+                if (!float_matches_exact(actual, expected)) {
                     harness.add_result(
                         test_name,
                         false,
@@ -957,7 +961,15 @@ bool run_float32_helper_test_for_type(const std::string& type_name, CpuInformati
                 const float lane_value = value.element(lane);
                 const float reciprocal_expected = 1.0f / lane_value;
                 const float clamp_expected = clamp(FallbackFloat32(lane_value), -2.25f, 7.5f).v;
-                if (!reciprocal_matches_true(reciprocal.element(lane), reciprocal_expected)) {
+                const bool reciprocal_ok = []<typename T>(float actual, float expected) {
+                    if constexpr (std::is_same_v<T, FallbackFloat32>) {
+                        return actual == expected;
+                    }
+                    else {
+                        return reciprocal_matches_true(actual, expected);
+                    }
+                }.template operator()<SimdType>(reciprocal.element(lane), reciprocal_expected);
+                if (!reciprocal_ok) {
                     harness.add_result(test_name, false, "reciprocal_approx mismatch, lane " + std::to_string(lane));
                     return false;
                 }
@@ -1098,6 +1110,7 @@ void run_float32_arithmetic_tests(TestHarness& harness) {
 #if defined(_M_X64) || defined(__x86_64)
     CpuInformation cpu{};
 #define MT_RUN_OR_HALT(expr) do { if (!(expr)) { return; } } while (false)
+    MT_RUN_OR_HALT(run_float32_suite_for_type<FallbackFloat32>("Fallback", cpu, harness));
     MT_RUN_OR_HALT(run_float32_suite_for_type<Simd128Float32>("Simd128", cpu, harness));
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
     MT_RUN_OR_HALT(run_float32_suite_for_type<Simd256Float32>("Simd256", cpu, harness));

@@ -106,27 +106,24 @@ void apply_simd_op_with_path(
     ArithmeticPath path,
     SimdType& out) {
     if (path == ArithmeticPath::vector_vector) {
-        out = a;
-        if (op == ArithmeticOp::add) { out += b; return; }
-        if (op == ArithmeticOp::sub) { out -= b; return; }
-        if (op == ArithmeticOp::mul) { out *= b; return; }
-        out /= b;
+        if (op == ArithmeticOp::add) { out = a + b; return; }
+        if (op == ArithmeticOp::sub) { out = a - b; return; }
+        if (op == ArithmeticOp::mul) { out = a * b; return; }
+        out = a / b;
         return;
     }
     if (path == ArithmeticPath::vector_scalar_right) {
-        out = a;
-        if (op == ArithmeticOp::add) { out += scalar; return; }
-        if (op == ArithmeticOp::sub) { out -= scalar; return; }
-        if (op == ArithmeticOp::mul) { out *= scalar; return; }
-        out /= scalar;
+        if (op == ArithmeticOp::add) { out = a + scalar; return; }
+        if (op == ArithmeticOp::sub) { out = a - scalar; return; }
+        if (op == ArithmeticOp::mul) { out = a * scalar; return; }
+        out = a / scalar;
         return;
     }
     if (path == ArithmeticPath::scalar_left_vector) {
-        out = SimdType(scalar);
-        if (op == ArithmeticOp::add) { out += b; return; }
-        if (op == ArithmeticOp::sub) { out -= b; return; }
-        if (op == ArithmeticOp::mul) { out *= b; return; }
-        out /= b;
+        if (op == ArithmeticOp::add) { out = scalar + b; return; }
+        if (op == ArithmeticOp::sub) { out = scalar - b; return; }
+        if (op == ArithmeticOp::mul) { out = scalar * b; return; }
+        out = scalar / b;
         return;
     }
 
@@ -791,6 +788,7 @@ void run_uint64_arithmetic_tests(TestHarness& harness) {
 #if defined(_M_X64) || defined(__x86_64)
     CpuInformation cpu{};
 #define MT_RUN_OR_HALT(expr) do { if (!(expr)) { return; } } while (false)
+    MT_RUN_OR_HALT(run_uint64_suite_for_type<FallbackUInt64>("Fallback", cpu, harness));
     MT_RUN_OR_HALT(run_uint64_suite_for_type<Simd128UInt64>("Simd128", cpu, harness));
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
     MT_RUN_OR_HALT(run_uint64_suite_for_type<Simd256UInt64>("Simd256", cpu, harness));

@@ -657,6 +657,39 @@ bool run_int64_compare_test_for_type(const std::string& type_name, CpuInformatio
 }
 
 template <typename SimdType>
+bool run_int64_metadata_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Int64 metadata";
+    if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
+        return true;
+    }
+
+    if (SimdType::size_of_element() != static_cast<int>(sizeof(int64_t))) {
+        harness.add_result(test_name, false, "size_of_element() mismatch");
+        return false;
+    }
+
+    const SimdType sequential = SimdType::make_sequential(-41ll);
+    for (int lane = 0; lane < SimdType::number_of_elements(); ++lane) {
+        const int64_t expected = -41ll + static_cast<int64_t>(lane);
+        if (sequential.element(lane) != expected) {
+            harness.add_result(test_name, false, "make_sequential mismatch, lane " + std::to_string(lane));
+            return false;
+        }
+    }
+
+    const SimdType set_value = SimdType::make_set1(57ll);
+    for (int lane = 0; lane < SimdType::number_of_elements(); ++lane) {
+        if (set_value.element(lane) != 57ll) {
+            harness.add_result(test_name, false, "make_set1 mismatch, lane " + std::to_string(lane));
+            return false;
+        }
+    }
+
+    harness.add_result(test_name, true, "make_sequential, make_set1, and size_of_element() matched");
+    return true;
+}
+
+template <typename SimdType>
 bool run_int64_binary_test_for_type(
     const std::string& type_name,
     const std::string& op_name,
@@ -756,7 +789,8 @@ bool run_int64_binary_test_for_type(
 
 template <typename SimdType>
 bool run_int64_suite_for_type(const char* type_name, CpuInformation cpu, TestHarness& harness) {
-    return run_int64_binary_test_for_type<SimdType>(type_name, "addition", ArithmeticOp::add, cpu, harness) &&
+    return run_int64_metadata_test_for_type<SimdType>(type_name, cpu, harness) &&
+           run_int64_binary_test_for_type<SimdType>(type_name, "addition", ArithmeticOp::add, cpu, harness) &&
            run_int64_binary_test_for_type<SimdType>(type_name, "subtraction", ArithmeticOp::sub, cpu, harness) &&
            run_int64_binary_test_for_type<SimdType>(type_name, "multiplication", ArithmeticOp::mul, cpu, harness) &&
            run_int64_binary_test_for_type<SimdType>(type_name, "division", ArithmeticOp::div, cpu, harness) &&

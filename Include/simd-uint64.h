@@ -135,6 +135,7 @@ struct FallbackUInt64 {
 
 	//*****Make Functions****
 	static FallbackUInt64 make_sequential(uint64_t first) { return FallbackUInt64(first); }
+	static FallbackUInt64 make_set1(uint64_t v) { return FallbackUInt64(v); }
 
 
 	//*****Addition Operators*****
@@ -393,6 +394,7 @@ struct Simd512UInt64 {
 
 	//*****Make Functions****
 	static Simd512UInt64 make_sequential(uint64_t first) { return Simd512UInt64(_mm512_set_epi64(first + 7, first + 6, first + 5, first + 4, first + 3, first + 2, first + 1, first)); }
+	static Simd512UInt64 make_set1(uint64_t v) { return Simd512UInt64(_mm512_set1_epi64(static_cast<long long>(v))); }
 
 
 	//*****Addition Operators*****
@@ -589,6 +591,7 @@ struct Simd256UInt64 {
 
 	//*****Make Functions****
 	static Simd256UInt64 make_sequential(uint64_t first) noexcept { return Simd256UInt64(_mm256_set_epi64x(first + 3, first + 2, first + 1, first)); }
+	static Simd256UInt64 make_set1(uint64_t v) noexcept { return Simd256UInt64(_mm256_set1_epi64x(static_cast<long long>(v))); }
 	
 
 
@@ -797,6 +800,7 @@ struct Simd128UInt64 {
 
 	//*****Make Functions****
 	static Simd128UInt64 make_sequential(uint64_t first) noexcept { return Simd128UInt64(_mm_set_epi64x(first + 1, first)); }
+	static Simd128UInt64 make_set1(uint64_t v) noexcept { return Simd128UInt64(_mm_set1_epi64x(static_cast<long long>(v))); }
 
 	private:
 

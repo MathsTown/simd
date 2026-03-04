@@ -153,6 +153,7 @@ struct FallbackFloat32 {
 
 	//*****Make Functions****
 	static FallbackFloat32 make_sequential(F first) { return FallbackFloat32(first); }
+	static FallbackFloat32 make_set1(F v) { return FallbackFloat32(v); }
 	static FallbackFloat32 make_from_int32(FallbackUInt32 i) { return FallbackFloat32(static_cast<float>(i.v)); }
 
 	//*****Cast Functions****
@@ -727,6 +728,7 @@ struct Simd512Float32 {
 
 	//*****Make Functions****
 	static Simd512Float32 make_sequential(F first) { return Simd512Float32(_mm512_set_ps(first+15.0f, first + 14.0f, first + 13.0f, first + 12.0f, first + 11.0f, first + 10.0f, first + 9.0f, first + 8.0f, first + 7.0f, first + 6.0f, first + 5.0f, first + 4.0f, first + 3.0f, first + 2.0f, first + 1.0f, first)); }
+	static Simd512Float32 make_set1(F v) { return Simd512Float32(_mm512_set1_ps(v)); }
 	
 
 	static Simd512Float32 make_from_int32(Simd512UInt32 i) { return Simd512Float32(_mm512_cvtepu32_ps(i.v)); }
@@ -1050,6 +1052,7 @@ struct Simd256Float32 {
 
 	//*****Make Functions****
 	static Simd256Float32 make_sequential(F first) { return Simd256Float32(_mm256_set_ps(first+7.0f, first + 6.0f, first + 5.0f, first + 4.0f, first + 3.0f, first + 2.0f, first + 1.0f, first)); }
+	static Simd256Float32 make_set1(F v) { return Simd256Float32(_mm256_set1_ps(v)); }
 	
 
 	static Simd256Float32 make_from_int32(Simd256UInt32 i) {return Simd256Float32(_mm256_cvtepi32_ps(i.v));}
@@ -1161,7 +1164,14 @@ inline static Simd256Float32 clamp(const Simd256Float32 a, const float min_f, co
 
 //*****Approximate Functions*****
 [[nodiscard("Value calculated and not used (reciprocal_approx)")]]
-inline static Simd256Float32 reciprocal_approx(const Simd256Float32 a) noexcept {return Simd256Float32(_mm256_rcp_ps(a.v));}
+inline static Simd256Float32 reciprocal_approx(const Simd256Float32 a) noexcept {
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
+		return Simd256Float32(_mm256_rcp14_ps(a.v));
+	}
+	else {
+		return Simd256Float32(_mm256_rcp_ps(a.v));
+	}
+}
 
 
 
@@ -1364,6 +1374,7 @@ struct Simd128Float32 {
 
 	//*****Make Functions****
 	static Simd128Float32 make_sequential(F first) { return Simd128Float32(_mm_set_ps(first + 3.0f, first + 2.0f, first + 1.0f, first)); }
+	static Simd128Float32 make_set1(F v) { return Simd128Float32(_mm_set1_ps(v)); }
 
 
 	static Simd128Float32 make_from_int32(Simd128UInt32 i) { return Simd128Float32(_mm_cvtepi32_ps(i.v)); } //SSE2
@@ -1440,44 +1451,64 @@ inline static Simd128Float32 fract(Simd128Float32 a) noexcept { return a - floor
 // Fused Multiply Add (a*b+c)
 [[nodiscard("Value calculated and not used (fma)")]]
 inline static Simd128Float32 fma(const Simd128Float32  a, const Simd128Float32 b, const Simd128Float32 c) {
-	if constexpr (mt::environment::compiler_has_avx2) {
+	if constexpr (mt::environment::compiler_has_fma) {
 		return _mm_fmadd_ps(a.v, b.v, c.v);  //We are compiling to level 3, but using 128 simd.
 	}
 	else {
-		return a * b + c;  //Fallback (no SSE instruction)
+		return Simd128Float32(_mm_set_ps(
+			std::fma(a.element(3), b.element(3), c.element(3)),
+			std::fma(a.element(2), b.element(2), c.element(2)),
+			std::fma(a.element(1), b.element(1), c.element(1)),
+			std::fma(a.element(0), b.element(0), c.element(0))
+		));
 	}
 } 
 
 // Fused Multiply Subtract (a*b-c)
 [[nodiscard("Value calculated and not used (fms)")]]
 inline static Simd128Float32 fms(const Simd128Float32  a, const Simd128Float32 b, const Simd128Float32 c) {
-	if constexpr (mt::environment::compiler_has_avx2) {
+	if constexpr (mt::environment::compiler_has_fma) {
 		return _mm_fmsub_ps(a.v, b.v, c.v);  //We are compiling to level 3, but using 128 simd.
 	}
 	else {
-		return a * b - c;  //Fallback (no SSE instruction)
+		return Simd128Float32(_mm_set_ps(
+			std::fma(a.element(3), b.element(3), -c.element(3)),
+			std::fma(a.element(2), b.element(2), -c.element(2)),
+			std::fma(a.element(1), b.element(1), -c.element(1)),
+			std::fma(a.element(0), b.element(0), -c.element(0))
+		));
 	}
 } 
 
 // Fused Negative Multiply Add (-a*b+c)
 [[nodiscard("Value calculated and not used (fnma)")]]
 inline static Simd128Float32 fnma(const Simd128Float32  a, const Simd128Float32 b, const Simd128Float32 c) {
-	if constexpr (mt::environment::compiler_has_avx2) {
+	if constexpr (mt::environment::compiler_has_fma) {
 		return _mm_fnmadd_ps(a.v, b.v, c.v);  //We are compiling to level 3, but using 128 simd.
 	}
 	else {
-		return -(a * b) + c;  //Fallback (no SSE instruction)
+		return Simd128Float32(_mm_set_ps(
+			std::fma(-a.element(3), b.element(3), c.element(3)),
+			std::fma(-a.element(2), b.element(2), c.element(2)),
+			std::fma(-a.element(1), b.element(1), c.element(1)),
+			std::fma(-a.element(0), b.element(0), c.element(0))
+		));
 	}
 }
 
 // Fused Negative Multiply Subtract (-a*b-c)
 [[nodiscard("Value calculated and not used (fnms)")]]
 inline static Simd128Float32 fnms(const Simd128Float32  a, const Simd128Float32 b, const Simd128Float32 c) {
-	if constexpr (mt::environment::compiler_has_avx2) {
+	if constexpr (mt::environment::compiler_has_fma) {
 		return _mm_fnmsub_ps(a.v, b.v, c.v); //We are compiling to level 3, but using 128 simd.
 	}
 	else {
-		return -(a * b) - c;  //Fallback (no SSE instruction)
+		return Simd128Float32(_mm_set_ps(
+			std::fma(-a.element(3), b.element(3), -c.element(3)),
+			std::fma(-a.element(2), b.element(2), -c.element(2)),
+			std::fma(-a.element(1), b.element(1), -c.element(1)),
+			std::fma(-a.element(0), b.element(0), -c.element(0))
+		));
 	}
 }
 
@@ -1516,7 +1547,14 @@ inline static Simd128Float32 clamp(const Simd128Float32 a, const float min_f, co
 
 //*****Approximate Functions*****
 [[nodiscard("Value calculated and not used (reciprocal_approx)")]]
-inline static Simd128Float32 reciprocal_approx(const Simd128Float32 a) noexcept { return Simd128Float32(_mm_rcp_ps(a.v)); } //sse
+inline static Simd128Float32 reciprocal_approx(const Simd128Float32 a) noexcept {
+	if constexpr (mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512vl) {
+		return Simd128Float32(_mm_rcp14_ps(a.v));
+	}
+	else {
+		return Simd128Float32(_mm_rcp_ps(a.v));
+	}
+}
 
 
 

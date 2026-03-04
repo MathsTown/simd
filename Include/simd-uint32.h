@@ -134,6 +134,7 @@ struct FallbackUInt32 {
 
 	//*****Make Functions****
 	static FallbackUInt32 make_sequential(uint32_t first) { return FallbackUInt32(first); }
+	static FallbackUInt32 make_set1(uint32_t v) { return FallbackUInt32(v); }
 
 
 	//*****Addition Operators*****
@@ -401,6 +402,7 @@ struct Simd512UInt32 {
 
 	//*****Make Functions****
 	static Simd512UInt32 make_sequential(uint32_t first) { return Simd512UInt32(_mm512_set_epi32(first + 15, first + 14, first + 13, first + 12, first + 11, first + 10, first + 9, first + 8, first + 7, first + 6, first + 5, first + 4, first + 3, first + 2, first + 1, first)); }
+	static Simd512UInt32 make_set1(uint32_t v) { return Simd512UInt32(_mm512_set1_epi32(v)); }
 
 
 	//*****Addition Operators*****
@@ -572,6 +574,7 @@ struct Simd256UInt32 {
 
 	//*****Make Functions****
 	static Simd256UInt32 make_sequential(uint32_t first) { return Simd256UInt32(_mm256_set_epi32(first + 7, first + 6, first + 5, first + 4, first + 3, first + 2, first + 1, first)); }
+	static Simd256UInt32 make_set1(uint32_t v) { return Simd256UInt32(_mm256_set1_epi32(v)); }
 	
 
 	//*****Mathematical*****
@@ -751,6 +754,7 @@ struct Simd128UInt32 {
 
 	//*****Make Functions****
 	static Simd128UInt32 make_sequential(uint32_t first) { return Simd128UInt32(_mm_set_epi32(first + 3, first + 2, first + 1, first)); }
+	static Simd128UInt32 make_set1(uint32_t v) { return Simd128UInt32(_mm_set1_epi32(v)); }
 
 
 	//*****Mathematical*****

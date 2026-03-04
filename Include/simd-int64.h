@@ -134,6 +134,7 @@ struct FallbackInt64 {
 
 	//*****Make Functions****
 	static FallbackInt64 make_sequential(int64_t first) { return FallbackInt64(first); }
+	static FallbackInt64 make_set1(int64_t v) { return FallbackInt64(v); }
 
 
 	//*****Addition Operators*****
@@ -388,6 +389,7 @@ struct Simd512Int64 {
 			static_cast<int64_t>(base + 7ull), static_cast<int64_t>(base + 6ull), static_cast<int64_t>(base + 5ull), static_cast<int64_t>(base + 4ull),
 			static_cast<int64_t>(base + 3ull), static_cast<int64_t>(base + 2ull), static_cast<int64_t>(base + 1ull), static_cast<int64_t>(base)));
 	}
+	static Simd512Int64 make_set1(int64_t v) { return Simd512Int64(_mm512_set1_epi64(v)); }
 
 
 	//*****Addition Operators*****
@@ -603,6 +605,7 @@ struct Simd256Int64 {
 		return Simd256Int64(_mm256_set_epi64x(
 			static_cast<int64_t>(base + 3ull), static_cast<int64_t>(base + 2ull), static_cast<int64_t>(base + 1ull), static_cast<int64_t>(base)));
 	}
+	static Simd256Int64 make_set1(int64_t v) { return Simd256Int64(_mm256_set1_epi64x(v)); }
 
 
 };
@@ -804,6 +807,7 @@ struct Simd128Int64 {
 		const uint64_t base = static_cast<uint64_t>(first);
 		return Simd128Int64(_mm_set_epi64x(static_cast<int64_t>(base + 1ull), static_cast<int64_t>(base)));
 	}
+	static Simd128Int64 make_set1(int64_t v) { return Simd128Int64(_mm_set1_epi64x(v)); }
 
 
 

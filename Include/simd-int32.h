@@ -134,6 +134,7 @@ struct FallbackInt32 {
 
 	//*****Make Functions****
 	static FallbackInt32 make_sequential(int32_t first) { return FallbackInt32(first); }
+	static FallbackInt32 make_set1(int32_t v) { return FallbackInt32(v); }
 
 
 	//*****Addition Operators*****
@@ -390,6 +391,7 @@ struct Simd512Int32 {
 			static_cast<int32_t>(base + 7u), static_cast<int32_t>(base + 6u), static_cast<int32_t>(base + 5u), static_cast<int32_t>(base + 4u),
 			static_cast<int32_t>(base + 3u), static_cast<int32_t>(base + 2u), static_cast<int32_t>(base + 1u), static_cast<int32_t>(base)));
 	}
+	static Simd512Int32 make_set1(int32_t v) { return Simd512Int32(_mm512_set1_epi32(v)); }
 
 
 	//*****Addition Operators*****
@@ -621,6 +623,7 @@ struct Simd256Int32 {
 			static_cast<int32_t>(base + 7u), static_cast<int32_t>(base + 6u), static_cast<int32_t>(base + 5u), static_cast<int32_t>(base + 4u),
 			static_cast<int32_t>(base + 3u), static_cast<int32_t>(base + 2u), static_cast<int32_t>(base + 1u), static_cast<int32_t>(base)));
 	}
+	static Simd256Int32 make_set1(int32_t v) { return Simd256Int32(_mm256_set1_epi32(v)); }
 
 
 };
@@ -782,6 +785,7 @@ struct Simd128Int32 {
 		return Simd128Int32(_mm_set_epi32(
 			static_cast<int32_t>(base + 3u), static_cast<int32_t>(base + 2u), static_cast<int32_t>(base + 1u), static_cast<int32_t>(base)));
 	}
+	static Simd128Int32 make_set1(int32_t v) { return Simd128Int32(_mm_set1_epi32(v)); }
 
 
 

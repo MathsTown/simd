@@ -313,34 +313,6 @@ inline static FallbackFloat32 blend(const FallbackFloat32 if_false, const Fallba
  * MSCV intrinsics are sometime a little more feature rich than GCC and Clang.  
  * This section provides shims and patches for compiler incompatible behaviour.
  * ************************************************************************************************/
-#if MT_SIMD_USE_PORTABLE_X86_SHIMS && MT_USE_SLEEF
-	#if !defined(__has_include)
-		#error "MT_USE_SLEEF requires __has_include support."
-	#endif
-	#if __has_include(<sleefinline_sse2.h>)
-		#include <sleefinline_sse2.h>
-		#define MT_F32_SLEEF_128_SUFFIX_SIMPLE _sse2
-		#define MT_F32_SLEEF_128_SUFFIX_ACC sse2
-	#elif MT_SIMD_ALLOW_LEVEL3_TYPES && __has_include(<sleefinline_avx2128.h>)
-		#include <sleefinline_avx2128.h>
-		#define MT_F32_SLEEF_128_SUFFIX_SIMPLE _avx2128
-		#define MT_F32_SLEEF_128_SUFFIX_ACC avx2128
-	#else
-		#error "MT_USE_SLEEF requires sleefinline_sse2.h, or sleefinline_avx2128.h when level 3 types are enabled."
-	#endif
-	#if MT_SIMD_ALLOW_LEVEL3_TYPES
-		#if !__has_include(<sleefinline_avx2.h>)
-			#error "MT_USE_SLEEF with AVX2 requires sleefinline_avx2.h in the include path."
-		#endif
-		#include <sleefinline_avx2.h>
-	#endif
-	#if MT_SIMD_ALLOW_LEVEL4_TYPES
-		#if !__has_include(<sleefinline_avx512f.h>)
-			#error "MT_USE_SLEEF with AVX-512 requires sleefinline_avx512f.h in the include path."
-		#endif
-		#include <sleefinline_avx512f.h>
-	#endif
-#endif
 
 namespace mt::simd_detail_f32 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
@@ -453,7 +425,7 @@ namespace mt::simd_detail_f32 {
 	}
 #endif
 
-#if MT_SIMD_USE_PORTABLE_X86_SHIMS && MT_USE_LIBC_FALLBACK
+#if MT_SIMD_USE_PORTABLE_X86_SHIMS && !MT_USE_SVML
 	#define MT_F32_UNARY(name, expr) \
 		inline __m128 name##_ps(__m128 v) { return map_unary(v, [](float x) { return (expr); }); } \
 		inline __m256 name##_ps(__m256 v) { return map_unary(v, [](float x) { return (expr); }); } \
@@ -497,68 +469,6 @@ namespace mt::simd_detail_f32 {
 	#undef MT_F32_BINARY
 #endif
 
-#if MT_SIMD_USE_PORTABLE_X86_SHIMS && MT_USE_SLEEF
-	#if MT_SIMD_ALLOW_LEVEL3_TYPES
-		#define MT_F32_SELECT_256(sleef_expr, fallback_expr) (sleef_expr)
-	#else
-		#define MT_F32_SELECT_256(sleef_expr, fallback_expr) (fallback_expr)
-	#endif
-	#if MT_SIMD_ALLOW_LEVEL4_TYPES
-		#define MT_F32_SELECT_512(sleef_expr, fallback_expr) (sleef_expr)
-	#else
-		#define MT_F32_SELECT_512(sleef_expr, fallback_expr) (fallback_expr)
-	#endif
-	#define MT_F32_JOIN2(a, b) a##b
-	#define MT_F32_JOIN(a, b) MT_F32_JOIN2(a, b)
-
-	#define MT_F32_SLEEF_UNARY(name, f4, f8, f16, fallback_expr) \
-		inline __m128 name##_ps(__m128 v) { return f4(v); } \
-		inline __m256 name##_ps(__m256 v) { return MT_F32_SELECT_256(f8(v), map_unary(v, [](float x) { return (fallback_expr); })); } \
-		inline __m512 name##_ps(__m512 v) { return MT_F32_SELECT_512(f16(v), map_unary(v, [](float x) { return (fallback_expr); })); }
-
-	#define MT_F32_SLEEF_BINARY(name, f4, f8, f16, fallback_expr) \
-		inline __m128 name##_ps(__m128 a, __m128 b) { return f4(a, b); } \
-		inline __m256 name##_ps(__m256 a, __m256 b) { return MT_F32_SELECT_256(f8(a, b), map_binary(a, b, [](float x, float y) { return (fallback_expr); })); } \
-		inline __m512 name##_ps(__m512 a, __m512 b) { return MT_F32_SELECT_512(f16(a, b), map_binary(a, b, [](float x, float y) { return (fallback_expr); })); }
-
-	MT_F32_SLEEF_UNARY(trunc, MT_F32_JOIN(Sleef_truncf4, MT_F32_SLEEF_128_SUFFIX_SIMPLE), Sleef_truncf8_avx2, Sleef_truncf16_avx512f, std::trunc(x))
-	MT_F32_SLEEF_UNARY(round, MT_F32_JOIN(Sleef_roundf4, MT_F32_SLEEF_128_SUFFIX_SIMPLE), Sleef_roundf8_avx2, Sleef_roundf16_avx512f, std::round(x))
-	MT_F32_SLEEF_UNARY(floor, MT_F32_JOIN(Sleef_floorf4, MT_F32_SLEEF_128_SUFFIX_SIMPLE), Sleef_floorf8_avx2, Sleef_floorf16_avx512f, std::floor(x))
-	MT_F32_SLEEF_UNARY(ceil, MT_F32_JOIN(Sleef_ceilf4, MT_F32_SLEEF_128_SUFFIX_SIMPLE), Sleef_ceilf8_avx2, Sleef_ceilf16_avx512f, std::ceil(x))
-	MT_F32_SLEEF_UNARY(exp, MT_F32_JOIN(Sleef_expf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_expf8_u10avx2, Sleef_expf16_u10avx512f, std::exp(x))
-	MT_F32_SLEEF_UNARY(exp2, MT_F32_JOIN(Sleef_exp2f4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_exp2f8_u10avx2, Sleef_exp2f16_u10avx512f, std::exp2(x))
-	MT_F32_SLEEF_UNARY(exp10, MT_F32_JOIN(Sleef_exp10f4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_exp10f8_u10avx2, Sleef_exp10f16_u10avx512f, std::pow(10.0f, x))
-	MT_F32_SLEEF_UNARY(expm1, MT_F32_JOIN(Sleef_expm1f4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_expm1f8_u10avx2, Sleef_expm1f16_u10avx512f, std::expm1(x))
-	MT_F32_SLEEF_UNARY(log, MT_F32_JOIN(Sleef_logf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_logf8_u10avx2, Sleef_logf16_u10avx512f, std::log(x))
-	MT_F32_SLEEF_UNARY(log1p, MT_F32_JOIN(Sleef_log1pf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_log1pf8_u10avx2, Sleef_log1pf16_u10avx512f, std::log1p(x))
-	MT_F32_SLEEF_UNARY(log2, MT_F32_JOIN(Sleef_log2f4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_log2f8_u10avx2, Sleef_log2f16_u10avx512f, std::log2(x))
-	MT_F32_SLEEF_UNARY(log10, MT_F32_JOIN(Sleef_log10f4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_log10f8_u10avx2, Sleef_log10f16_u10avx512f, std::log10(x))
-	MT_F32_SLEEF_UNARY(cbrt, MT_F32_JOIN(Sleef_cbrtf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_cbrtf8_u10avx2, Sleef_cbrtf16_u10avx512f, std::cbrt(x))
-	MT_F32_SLEEF_UNARY(sin, MT_F32_JOIN(Sleef_sinf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_sinf8_u10avx2, Sleef_sinf16_u10avx512f, std::sin(x))
-	MT_F32_SLEEF_UNARY(cos, MT_F32_JOIN(Sleef_cosf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_cosf8_u10avx2, Sleef_cosf16_u10avx512f, std::cos(x))
-	MT_F32_SLEEF_UNARY(tan, MT_F32_JOIN(Sleef_tanf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_tanf8_u10avx2, Sleef_tanf16_u10avx512f, std::tan(x))
-	MT_F32_SLEEF_UNARY(asin, MT_F32_JOIN(Sleef_asinf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_asinf8_u10avx2, Sleef_asinf16_u10avx512f, std::asin(x))
-	MT_F32_SLEEF_UNARY(acos, MT_F32_JOIN(Sleef_acosf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_acosf8_u10avx2, Sleef_acosf16_u10avx512f, std::acos(x))
-	MT_F32_SLEEF_UNARY(atan, MT_F32_JOIN(Sleef_atanf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_atanf8_u10avx2, Sleef_atanf16_u10avx512f, std::atan(x))
-	MT_F32_SLEEF_UNARY(sinh, MT_F32_JOIN(Sleef_sinhf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_sinhf8_u10avx2, Sleef_sinhf16_u10avx512f, std::sinh(x))
-	MT_F32_SLEEF_UNARY(cosh, MT_F32_JOIN(Sleef_coshf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_coshf8_u10avx2, Sleef_coshf16_u10avx512f, std::cosh(x))
-	MT_F32_SLEEF_UNARY(tanh, MT_F32_JOIN(Sleef_tanhf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_tanhf8_u10avx2, Sleef_tanhf16_u10avx512f, std::tanh(x))
-	MT_F32_SLEEF_UNARY(asinh, MT_F32_JOIN(Sleef_asinhf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_asinhf8_u10avx2, Sleef_asinhf16_u10avx512f, std::asinh(x))
-	MT_F32_SLEEF_UNARY(acosh, MT_F32_JOIN(Sleef_acoshf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_acoshf8_u10avx2, Sleef_acoshf16_u10avx512f, std::acosh(x))
-	MT_F32_SLEEF_UNARY(atanh, MT_F32_JOIN(Sleef_atanhf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_atanhf8_u10avx2, Sleef_atanhf16_u10avx512f, std::atanh(x))
-	MT_F32_SLEEF_BINARY(pow, MT_F32_JOIN(Sleef_powf4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_powf8_u10avx2, Sleef_powf16_u10avx512f, std::pow(x, y))
-	MT_F32_SLEEF_BINARY(hypot, MT_F32_JOIN(Sleef_hypotf4_u05, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_hypotf8_u05avx2, Sleef_hypotf16_u05avx512f, std::hypot(x, y))
-	MT_F32_SLEEF_BINARY(atan2, MT_F32_JOIN(Sleef_atan2f4_u10, MT_F32_SLEEF_128_SUFFIX_ACC), Sleef_atan2f8_u10avx2, Sleef_atan2f16_u10avx512f, std::atan2(x, y))
-
-	#undef MT_F32_SLEEF_UNARY
-	#undef MT_F32_SLEEF_BINARY
-	#undef MT_F32_SELECT_256
-	#undef MT_F32_SELECT_512
-	#undef MT_F32_JOIN2
-	#undef MT_F32_JOIN
-	#undef MT_F32_SLEEF_128_SUFFIX_SIMPLE
-	#undef MT_F32_SLEEF_128_SUFFIX_ACC
-#endif
 }
 
 #if MT_SIMD_USE_PORTABLE_X86_SHIMS

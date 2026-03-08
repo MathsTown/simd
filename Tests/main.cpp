@@ -95,14 +95,7 @@ int TestHarness::summarize_and_exit_code() const {
 }
 
 static void print_environment_summary() {
-    const char* math_backend = "UNKNOWN";
-    if (mt::environment::use_svml) {
-        math_backend = "SVML";
-    } else if (mt::environment::use_sleef) {
-        math_backend = "SLEEF";
-    } else if (mt::environment::use_libc_fallback) {
-        math_backend = "LIBC_FALLBACK";
-    }
+    const char* math_backend = mt::environment::use_svml ? "SVML" : "NATIVE";
 
     std::cout << "===== Build Environment =====\n";
     std::cout << "Visual Studio : " << (mt::environment::is_visual_studio ? "Yes" : "No") << "\n";

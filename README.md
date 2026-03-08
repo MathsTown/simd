@@ -2,63 +2,24 @@
 
 A small header-only SIMD library extracted from Maths Town projects.
 
-It currently provides fallback, SSE, AVX2, and AVX-512 vector types for common
+It currently provides native fallback, SSE, AVX2, and AVX-512 vector types for common
 `float`, `double`, signed integer, and unsigned integer operations.
 
 This repository is being prepared as a standalone open source library for reuse
 in other projects (including via git subtree).
 
-## Math Backends
-The trancedental math function such as sin() cos() tan() log() exp() etc require a backend library.
+## Compilers SPecific Notes
+Transcendental math operations well implemented on MSVC by using the SVML library.  However other compilers use a simple fallback mechanism where lanes are unpacked and the std library is used.  I will try to implement these operations one day.
 
-Microsft C++ Compiler 
-    - SVML is built-in (matches Intel documentation).  No additional library required.
+### Microsoft C++ Compiler
+  Transcendental math operations such as `sin()`, `cos()`, `tan()`, `log()`, and `exp()` use the SVML library so are fully simd.
 
-GCC/Clang 
-    - No built-in.  Sleef is recommended, and should be included as a single header. (see instructions)
-    - A fallback mode is available.  This simply unpacks vectors and sends them to the standard library.
+### Clang
+  SVML is not available.  Transcendental math operations such as `sin()`, `cos()`, `tan()`, `log()`, and `exp()` use my code, which are currently just slow fallbacks. 
 
+### GCC
+  SVML is not available.  Transcendental math operations such as `sin()`, `cos()`, `tan()`, `log()`, and `exp()` use my code, which are currently just slow fallbacks. 
 
-Select one backend with a compile definition:
-
-- `MT_USE_SVML=1`
-- `MT_USE_SLEEF=1`
-- `MT_USE_LIBC_FALLBACK=1`
-
-Default behavior:
-- MSVC builds use `MT_USE_SVML=1` (no external math library required).
-- GCC/Clang builds use `MT_USE_LIBC_FALLBACK=1` (portable fallback).
-
-### GCC/Clang with SLEEF (inline headers)
-
-SLEEF can be used as header-only inline math on GCC/Clang.
-
-```powershell
-git clone https://github.com/shibatch/sleef.git
-cmake -S sleef -B sleef\build -DSLEEF_BUILD_INLINE_HEADERS=TRUE -DCMAKE_INSTALL_PREFIX="$PWD\sleef\install"
-cmake --build sleef\build --config Release --target install
-```
-
-Then compile your target with:
-
-- `MT_USE_SLEEF=1`
-- Include path to `sleef\install\include`
-- `-ffp-contract=off` (required by SLEEF inline headers)
-
-This project expects these headers in the include path:
-
-- `sleefinline_sse2.h`
-- `sleefinline_avx2128.h` and `sleefinline_avx2.h` (for 256 types)
-- `sleefinline_avx512f.h` (for 512 types)
-
-For tests, this can now be automated by CMake (no manual SLEEF install needed).
-Set `SIMD_TEST_USE_SLEEF=ON` and CMake will download/build SLEEF into the build tree.
-
-### GCC/Clang without SLEEF
-
-Use `MT_USE_LIBC_FALLBACK=1` (or rely on the default). This works without extra
-libraries, but transcendental SIMD operations are slower because lanes are
-unpacked and mapped through standard library calls.
 
 ## Testing Suite
 If you wish to run tests, these are currently setup to run under PowerShell for Windows.  There are tests for 3 windows compilers: MSVC, gcc and clang (as clang-cl).
@@ -92,7 +53,7 @@ cmake --build Build\clang --config Release
 ```
 
 ### Test GCC C++ Compiler 
-GCC really does not like to see intrinsics from higher levels in the code, even if they are unreachable. There is a separate compilation mode to test each level of support.  This is a nice check because it ensure invalid intrisics are not buried in the code.
+GCC really does not like to see intrinsics from higher levels in the code, even if they are unreachable. There is a separate compilation mode to test each level of support, to make sure I don't rely on runtime checks for this in GCC.  (Whereas other compilers we just check at runtime)
 
 Windows (PowerShell), GCC level 1 mode (128 bit types, `SSE2` minimum):
 
@@ -109,18 +70,6 @@ cmake -S Tests -B Build\gcc-avx2 -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -
 cmake --build Build\gcc-avx2
 .\Build\gcc-avx2\simd_test.exe
 ```
-
-Windows (PowerShell), GCC level 3 mode with auto-downloaded SLEEF:
-
-```powershell
-cmake -S Tests -B Build\gcc-avx2-sleef -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -DSIMD_TEST_MODE=AVX2 -DSIMD_TEST_USE_SLEEF=ON
-cmake --build Build\gcc-avx2-sleef
-.\Build\gcc-avx2-sleef\simd_test.exe
-```
-
-Optional: choose a SLEEF branch/tag with `-DSIMD_TEST_SLEEF_GIT_TAG=<tag>`.
-If needed, set `-DSED_COMMAND=<path-to-sed.exe>` (SLEEF uses `sed` to generate inline headers).
-Auto-SLEEF test mode is supported for `SIMD_TEST_MODE=AVX2` or `AVX512`.
 
 Windows (PowerShell), GCC level 4 mode (512 bit types, `AVX-512f and AVX-512dq` minimum):
 

@@ -18,9 +18,15 @@ The code targets 4 different CPU levels:
  - x86_64 level 3 (AVX2 +) - CPUs that fully implement 256bit instructions.
  - x86_64 level 4 (AVX-512 +) - CPUs that fully implement 512bit instructions.
 
- - Extra instructions (such as SSE4.1, AVX) are used if detected at compiles time.
+ - Extra instructions (such as SSE4.1, AVX) are used if detected at compile time.
 
 Generally, CPUs are restricted to the lower support level if they only have partial implmentation of an instruction size.  For example, there are some older CPUs that support AVX but not AVX2, these will need to use 128bit instrucitons.
+
+For Windows, the best option is one build per x86-64 level.  Dispatch at download or install time. It is also possible to dispatch to different dynamic library files (.dll) at runtime.  Functions for runtime detection are included.
+
+For Linux, compile from source.
+
+Runtime dispatch is supported on MSVC only, but is much slower than compile time dispatch (using 512bit instructions when the compiler is not optimising 512 bit registers is sub-optimal).  
 
 
 ### Types
@@ -199,6 +205,8 @@ Transcendental math operations fully implemented on MSVC by using the SVML libra
 
 ### GCC
   SVML is not available.  Transcendental math operations such as `sin()`, `cos()`, `tan()`, `log()`, and `exp()` use my code, which are currently just slow fallbacks. 
+
+  GCC disables intrinsics if they are not supported, so types that are not supported will not be exposed when compiling with GCC.
 
 
 ## Testing Suite

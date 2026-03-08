@@ -51,10 +51,8 @@ concept Simd = requires (T t, const T ct, typename T::F lane_value) {
 	requires std::movable<T>;
 	
 	//Has CPU Support functions
-	{ T::compiler_level_supported() } -> std::convertible_to<bool>;
 	{ T::compiler_supported() } -> std::convertible_to<bool>;
 	{ T::cpu_supported() } -> std::convertible_to<bool>;
-	{ T::cpu_level_supported() } -> std::convertible_to<bool>;
 	
 	//Public Elements
 	t.v;

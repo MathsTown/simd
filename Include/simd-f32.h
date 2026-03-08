@@ -50,14 +50,11 @@ Ensure the CPU supports the full "level" if you need to use more than one type.
 
 
 To check support at compile time:
-	- Use compiler_level_supported()
-	- If you won't use any of the type conversion functions you can use compiler_supported()
 	- For GCC you may need pre-processor defines to gate the calling site.
 	
 
 To check support at run time:
-	- Use cpu_level_supported()
-	- If you won't use any of the type conversion functions you can use cpu_supported()
+	- Use cpu_supported()
 
 Runtime detection notes:
 Visual studio will support compiling all types and switching at runtime. However this often results in slower
@@ -102,16 +99,9 @@ struct FallbackFloat32 {
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same the same level may not be supported) 
 	static bool cpu_supported() {return true;}
 
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported() {return true; }
-	
-
 #if MT_SIMD_ARCH_X64
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same the same level may not be supported) 
 	static bool cpu_supported(CpuInformation) {return true;}
-
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported(CpuInformation) {return true;}
 #endif
 
 	//Performs a compile time CPU check to see if this type is supported.  Checks this type ONLY (integers in same the same level may not be supported) 
@@ -119,13 +109,6 @@ struct FallbackFloat32 {
 		return true;
 	}
 
-	//Performs a compile time support to see if the microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static constexpr bool compiler_level_supported() {
-		return true;
-	}
-	
-
-	
 	//*****Access Elements*****
 	static constexpr int size_of_element() { return sizeof(float); }
 	static constexpr int number_of_elements() { return 1; }	
@@ -582,34 +565,14 @@ struct Simd512Float32 {
 
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same class may not be supported) 
 	static bool cpu_supported(CpuInformation cpuid) {
-		return cpuid.has_avx512_f() && cpuid.has_avx512_dq() && cpuid.has_avx512_vl() && cpuid.has_avx512_bw() && cpuid.has_avx512_cd();
+		return cpuid.is_level_4();
 	}
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
 	static constexpr bool compiler_supported() {
-		return mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512dq && mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512bw && mt::environment::compiler_has_avx512cd;
+		return mt::environment::compiler_is_level_4;
 	}
 
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported() {
-		CpuInformation cpuid{};
-		return cpu_level_supported(cpuid);
-	}
-
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported(CpuInformation cpuid) {
-		return cpuid.has_avx512_f() && cpuid.has_avx512_dq() && cpuid.has_avx512_vl() && cpuid.has_avx512_bw() && cpuid.has_avx512_cd();
-	}
-
-	//Performs a compile time support to see if the microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static constexpr bool compiler_level_supported() {
-		return mt::environment::compiler_has_avx512f && mt::environment::compiler_has_avx512dq && mt::environment::compiler_has_avx512vl && mt::environment::compiler_has_avx512bw && mt::environment::compiler_has_avx512cd;
-	}
-
-
-
-	
-	
 	static constexpr int size_of_element() { return sizeof(float); }
 	static constexpr int number_of_elements() { return 16; }
 
@@ -645,7 +608,7 @@ struct Simd512Float32 {
 
 	//*****Cast Functions****
 
-	//Converts to an unsigned integer.  No check is performed to see if that type is supported. Use cpu_level_supported() for safety. 
+	//Converts to an unsigned integer.  No check is performed to see if that type is supported.
 	Simd512UInt32 bitcast_to_uint() const { return Simd512UInt32(_mm512_castps_si512(this->v)); }
 	
 
@@ -908,30 +871,13 @@ struct Simd256Float32 {
 	}
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same the same level may not be supported) 
 	static bool cpu_supported(CpuInformation cpuid) {
-		return cpuid.has_avx() && cpuid.has_fma();
+		return cpuid.is_level_3();
 	}
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
 	static constexpr bool compiler_supported() {
-		return mt::environment::compiler_has_avx && mt::environment::compiler_has_fma;
+		return mt::environment::compiler_is_level_3;
 	}
-
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported() {
-		CpuInformation cpuid{};
-		return cpu_level_supported(cpuid);
-	}
-
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported(CpuInformation cpuid) {
-		return cpuid.has_avx2() && cpuid.has_avx() && cpuid.has_fma();
-	}
-
-	//Performs a compile time support to see if the microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static constexpr bool compiler_level_supported() {
-		return mt::environment::compiler_has_avx2 && mt::environment::compiler_has_avx && mt::environment::compiler_has_fma;
-	}
-
 
 	static constexpr int size_of_element() { return sizeof(float); }
 	static constexpr int number_of_elements() { return 8; }
@@ -1231,28 +1177,12 @@ struct Simd128Float32 {
 	}
 	//Performs a runtime CPU check to see if this type is supported.  Checks this type ONLY (integers in same the same level may not be supported) 
 	static bool cpu_supported(CpuInformation cpuid) {
-		return cpuid.has_sse() && cpuid.has_sse2();
+		return cpuid.is_level_1();
 	}
 
 	//Performs a compile time support. Checks this type ONLY (integers in same class may not be supported) 
 	static constexpr bool compiler_supported() {
-		return mt::environment::compiler_has_sse && mt::environment::compiler_has_sse2;
-	}
-
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported() {
-		CpuInformation cpuid{};
-		return cpu_level_supported(cpuid);
-	}
-
-	//Performs a runtime CPU check to see if this type's microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static bool cpu_level_supported(CpuInformation cpuid) {
-		return cpuid.has_sse() && cpuid.has_sse2();
-	}
-
-	//Performs a compile time support to see if the microarchitecture level is supported.  (This will ensure that referernced integer types are also supported)
-	static constexpr bool compiler_level_supported() {
-		return mt::environment::compiler_has_sse && mt::environment::compiler_has_sse2;
+		return mt::environment::compiler_is_level_1;
 	}
 
 	static constexpr int size_of_element() { return sizeof(float); }

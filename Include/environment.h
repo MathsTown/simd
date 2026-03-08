@@ -185,6 +185,12 @@ namespace mt::environment {
 	constexpr static bool compiler_has_fma = false;
 #endif
 
+#if defined(__F16C__)
+	constexpr static bool compiler_has_f16c = true;
+#else
+	constexpr static bool compiler_has_f16c = false;
+#endif
+
 	// Selected math backend.
 	constexpr static bool use_svml = (MT_USE_SVML != 0);
 
@@ -248,6 +254,12 @@ namespace mt::environment {
 #else
 	constexpr static bool compiler_has_avx512cd = false;
 #endif
+
+	// Compiler-mode x86_64 microarchitecture level checks.
+	constexpr static bool compiler_is_level_1 = compiler_has_sse && compiler_has_sse2;
+	constexpr static bool compiler_is_level_2 = compiler_is_level_1 && compiler_has_sse3 && compiler_has_ssse3 && compiler_has_sse4_1 && compiler_has_sse4_2;
+	constexpr static bool compiler_is_level_3 = compiler_is_level_2 && compiler_has_avx && compiler_has_avx2 && compiler_has_fma && compiler_has_f16c;
+	constexpr static bool compiler_is_level_4 = compiler_is_level_3 && compiler_has_avx512f && compiler_has_avx512dq && compiler_has_avx512vl && compiler_has_avx512bw && compiler_has_avx512cd;
 
 
 

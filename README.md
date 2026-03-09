@@ -1,4 +1,4 @@
-# SIMD
+# Maths Town SIMD Library
 
 A small header-only SIMD library made for use with Maths Town projects.  I've made it public in case it useful to anyone. (Permissive MIT license)
 

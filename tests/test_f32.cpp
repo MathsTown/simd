@@ -5,11 +5,11 @@ Authors:        (c) 2026 Maths Town
 Licence:        The MIT License
 
 *********************************************************************************************************
-Float64 SIMD tests.
-Uses FallbackFloat64 as the reference implementation.
+Float32 SIMD tests.
+Uses FallbackFloat32 as the reference implementation.
 *********************************************************************************************************/
 
-#include "test_f64.h"
+#include "test_f32.h"
 
 #include <bit>
 #include <algorithm>
@@ -19,13 +19,9 @@ Uses FallbackFloat64 as the reference implementation.
 #include <random>
 #include <string_view>
 #include <tuple>
-#include <utility>
 
-#include "../Include/simd-cpuid.h"
-#include "../Include/simd-concepts.h"
-#include "../Include/simd-uint32.h"
-#include "../Include/simd-uint64.h"
-#include "../Include/simd-f64.h"
+#include "../include/simd-cpuid.h"
+#include "../include/simd-f32.h"
 
 namespace {
 
@@ -117,7 +113,7 @@ std::string_view path_name(ArithmeticPath path) {
     return "compound op scalar";
 }
 
-bool double_matches_fallback(double actual, double expected) {
+bool float_matches_fallback(float actual, float expected) {
     if (std::isnan(actual) && std::isnan(expected)) {
         return true;
     }
@@ -125,36 +121,36 @@ bool double_matches_fallback(double actual, double expected) {
         return actual == expected;
     }
 
-    const double abs_diff = std::fabs(actual - expected);
-    const double scale = std::max(1.0, std::max(std::fabs(actual), std::fabs(expected)));
-    return abs_diff <= (1.0e-12 * scale);
+    const float abs_diff = std::fabs(actual - expected);
+    const float scale = std::max(1.0f, std::max(std::fabs(actual), std::fabs(expected)));
+    return abs_diff <= (2.0e-6f * scale);
 }
 
-bool double_matches_exact(double actual, double expected) {
+bool float_matches_exact(float actual, float expected) {
     if (std::isnan(actual) && std::isnan(expected)) {
         return true;
     }
-    return std::bit_cast<uint64_t>(actual) == std::bit_cast<uint64_t>(expected);
+    return std::bit_cast<uint32_t>(actual) == std::bit_cast<uint32_t>(expected);
 }
 
-double apply_fallback_binary(double lhs, double rhs, ArithmeticOp op) {
+float apply_fallback_binary(float lhs, float rhs, ArithmeticOp op) {
     if (op == ArithmeticOp::add) {
-        return (FallbackFloat64(lhs) + FallbackFloat64(rhs)).v;
+        return (FallbackFloat32(lhs) + FallbackFloat32(rhs)).v;
     }
     if (op == ArithmeticOp::sub) {
-        return (FallbackFloat64(lhs) - FallbackFloat64(rhs)).v;
+        return (FallbackFloat32(lhs) - FallbackFloat32(rhs)).v;
     }
     if (op == ArithmeticOp::mul) {
-        return (FallbackFloat64(lhs) * FallbackFloat64(rhs)).v;
+        return (FallbackFloat32(lhs) * FallbackFloat32(rhs)).v;
     }
-    return (FallbackFloat64(lhs) / FallbackFloat64(rhs)).v;
+    return (FallbackFloat32(lhs) / FallbackFloat32(rhs)).v;
 }
 
 template <typename SimdType>
 void apply_simd_op_with_path(
     const SimdType& a,
     const SimdType& b,
-    double scalar,
+    float scalar,
     ArithmeticOp op,
     ArithmeticPath path,
     SimdType& out) {
@@ -195,10 +191,10 @@ void apply_simd_op_with_path(
     else { out /= scalar; }
 }
 
-double apply_fallback_op_with_path(
-    double lhs,
-    double rhs,
-    double scalar,
+float apply_fallback_op_with_path(
+    float lhs,
+    float rhs,
+    float scalar,
     ArithmeticOp op,
     ArithmeticPath path) {
     if (path == ArithmeticPath::vector_vector) {
@@ -211,15 +207,15 @@ double apply_fallback_op_with_path(
         return apply_fallback_binary(scalar, rhs, op);
     }
     if (path == ArithmeticPath::compound_vector) {
-        FallbackFloat64 out(lhs);
-        if (op == ArithmeticOp::add) { out += FallbackFloat64(rhs); }
-        else if (op == ArithmeticOp::sub) { out -= FallbackFloat64(rhs); }
-        else if (op == ArithmeticOp::mul) { out *= FallbackFloat64(rhs); }
-        else { out /= FallbackFloat64(rhs); }
+        FallbackFloat32 out(lhs);
+        if (op == ArithmeticOp::add) { out += FallbackFloat32(rhs); }
+        else if (op == ArithmeticOp::sub) { out -= FallbackFloat32(rhs); }
+        else if (op == ArithmeticOp::mul) { out *= FallbackFloat32(rhs); }
+        else { out /= FallbackFloat32(rhs); }
         return out.v;
     }
 
-    FallbackFloat64 out(lhs);
+    FallbackFloat32 out(lhs);
     if (op == ArithmeticOp::add) { out += scalar; }
     else if (op == ArithmeticOp::sub) { out -= scalar; }
     else if (op == ArithmeticOp::mul) { out *= scalar; }
@@ -227,11 +223,11 @@ double apply_fallback_op_with_path(
     return out.v;
 }
 
-double finite_scalar_for_op(ArithmeticOp op) {
-    if (op == ArithmeticOp::add) { return 7.5; }
-    if (op == ArithmeticOp::sub) { return -2.25; }
-    if (op == ArithmeticOp::mul) { return -1.5; }
-    return 2.0;
+float finite_scalar_for_op(ArithmeticOp op) {
+    if (op == ArithmeticOp::add) { return 3.75f; }
+    if (op == ArithmeticOp::sub) { return -2.5f; }
+    if (op == ArithmeticOp::mul) { return -1.25f; }
+    return 2.0f;
 }
 
 std::string_view unary_math_name(UnaryMathOp op) {
@@ -295,8 +291,8 @@ std::string_view fma_name(FmaOp op) {
     return "unknown";
 }
 
-double apply_fallback_unary(double value, UnaryMathOp op) {
-    const FallbackFloat64 a(value);
+float apply_fallback_unary(float value, UnaryMathOp op) {
+    const FallbackFloat32 a(value);
     switch (op) {
     case UnaryMathOp::floor_op: return floor(a).v;
     case UnaryMathOp::ceil_op: return ceil(a).v;
@@ -330,9 +326,9 @@ double apply_fallback_unary(double value, UnaryMathOp op) {
     return value;
 }
 
-double apply_fallback_binary_math(double lhs, double rhs, BinaryMathOp op) {
-    const FallbackFloat64 a(lhs);
-    const FallbackFloat64 b(rhs);
+float apply_fallback_binary_math(float lhs, float rhs, BinaryMathOp op) {
+    const FallbackFloat32 a(lhs);
+    const FallbackFloat32 b(rhs);
     switch (op) {
     case BinaryMathOp::pow_op: return pow(a, b).v;
     case BinaryMathOp::hypot_op: return hypot(a, b).v;
@@ -341,9 +337,9 @@ double apply_fallback_binary_math(double lhs, double rhs, BinaryMathOp op) {
     return lhs;
 }
 
-double apply_fallback_compare_math(double lhs, double rhs, CompareMathOp op) {
-    const FallbackFloat64 a(lhs);
-    const FallbackFloat64 b(rhs);
+float apply_fallback_compare_math(float lhs, float rhs, CompareMathOp op) {
+    const FallbackFloat32 a(lhs);
+    const FallbackFloat32 b(rhs);
     switch (op) {
     case CompareMathOp::min_op: return min(a, b).v;
     case CompareMathOp::max_op: return max(a, b).v;
@@ -351,18 +347,18 @@ double apply_fallback_compare_math(double lhs, double rhs, CompareMathOp op) {
     return lhs;
 }
 
-double apply_fallback_clamp_unit(double value) {
-    return clamp(FallbackFloat64(value)).v;
+float apply_fallback_clamp_unit(float value) {
+    return clamp(FallbackFloat32(value)).v;
 }
 
-double apply_fallback_clamp_range(double value, double lo, double hi) {
-    return clamp(FallbackFloat64(value), FallbackFloat64(lo), FallbackFloat64(hi)).v;
+float apply_fallback_clamp_range(float value, float lo, float hi) {
+    return clamp(FallbackFloat32(value), FallbackFloat32(lo), FallbackFloat32(hi)).v;
 }
 
-double apply_fallback_fma(double a, double b, double c, FmaOp op) {
-    const FallbackFloat64 lhs(a);
-    const FallbackFloat64 rhs(b);
-    const FallbackFloat64 addend(c);
+float apply_fallback_fma(float a, float b, float c, FmaOp op) {
+    const FallbackFloat32 lhs(a);
+    const FallbackFloat32 rhs(b);
+    const FallbackFloat32 addend(c);
     switch (op) {
     case FmaOp::fma_op: return fma(lhs, rhs, addend).v;
     case FmaOp::fms_op: return fms(lhs, rhs, addend).v;
@@ -437,145 +433,143 @@ SimdType apply_simd_fma(const SimdType& a, const SimdType& b, const SimdType& c,
     return a;
 }
 
-double sample_unary_input(std::mt19937_64& rng, UnaryMathOp op) {
+float sample_unary_input(std::mt19937& rng, UnaryMathOp op) {
     switch (op) {
     case UnaryMathOp::floor_op:
     case UnaryMathOp::ceil_op:
     case UnaryMathOp::trunc_op:
     case UnaryMathOp::round_op:
     case UnaryMathOp::fract_op: {
-        std::uniform_real_distribution<double> d(-1.0e6, 1.0e6);
+        std::uniform_real_distribution<float> d(-1000.0f, 1000.0f);
         return d(rng);
     }
     case UnaryMathOp::sqrt_op: {
-        std::uniform_real_distribution<double> d(0.0, 1.0e12);
+        std::uniform_real_distribution<float> d(0.0f, 1.0e6f);
         return d(rng);
     }
     case UnaryMathOp::log_op:
     case UnaryMathOp::log2_op: {
-        std::uniform_real_distribution<double> d(1.0e-12, 1.0e12);
+        std::uniform_real_distribution<float> d(1.0e-6f, 1.0e6f);
         return d(rng);
     }
     case UnaryMathOp::log10_op: {
-        std::uniform_real_distribution<double> d(1.0e-12, 1.0e12);
+        std::uniform_real_distribution<float> d(1.0e-6f, 1.0e6f);
         return d(rng);
     }
     case UnaryMathOp::log1p_op: {
-        std::uniform_real_distribution<double> d(-0.999999999999, 1.0e12);
+        std::uniform_real_distribution<float> d(-0.9999f, 1.0e6f);
         return d(rng);
     }
     case UnaryMathOp::asin_op:
     case UnaryMathOp::acos_op: {
-        std::uniform_real_distribution<double> d(-1.0, 1.0);
+        std::uniform_real_distribution<float> d(-1.0f, 1.0f);
         return d(rng);
     }
     case UnaryMathOp::atanh_op: {
-        std::uniform_real_distribution<double> d(-0.99, 0.99);
+        std::uniform_real_distribution<float> d(-0.99f, 0.99f);
         return d(rng);
     }
     case UnaryMathOp::acosh_op: {
-        std::uniform_real_distribution<double> d(1.0, 1.0e12);
+        std::uniform_real_distribution<float> d(1.0f, 1.0e6f);
         return d(rng);
     }
     case UnaryMathOp::exp_op:
     case UnaryMathOp::expm1_op: {
-        std::uniform_real_distribution<double> d(-100.0, 100.0);
+        std::uniform_real_distribution<float> d(-20.0f, 20.0f);
         return d(rng);
     }
     case UnaryMathOp::exp2_op: {
-        std::uniform_real_distribution<double> d(-100.0, 100.0);
+        std::uniform_real_distribution<float> d(-30.0f, 30.0f);
         return d(rng);
     }
     case UnaryMathOp::exp10_op: {
-        std::uniform_real_distribution<double> d(-20.0, 20.0);
+        std::uniform_real_distribution<float> d(-10.0f, 10.0f);
         return d(rng);
     }
     case UnaryMathOp::sinh_op:
     case UnaryMathOp::cosh_op: {
-        std::uniform_real_distribution<double> d(-20.0, 20.0);
+        std::uniform_real_distribution<float> d(-10.0f, 10.0f);
         return d(rng);
     }
     case UnaryMathOp::tan_op: {
-        std::uniform_real_distribution<double> d(-1.0, 1.0);
+        std::uniform_real_distribution<float> d(-1.0f, 1.0f);
         return d(rng);
     }
     default: {
-        std::uniform_real_distribution<double> d(-1000.0, 1000.0);
+        std::uniform_real_distribution<float> d(-100.0f, 100.0f);
         return d(rng);
     }
     }
 }
 
-std::pair<double, double> sample_binary_input(std::mt19937_64& rng, BinaryMathOp op) {
+std::pair<float, float> sample_binary_input(std::mt19937& rng, BinaryMathOp op) {
     switch (op) {
     case BinaryMathOp::pow_op: {
-        std::uniform_real_distribution<double> base_dist(1.0e-8, 1000.0);
-        std::uniform_real_distribution<double> exp_dist(-8.0, 8.0);
+        std::uniform_real_distribution<float> base_dist(1.0e-4f, 100.0f);
+        std::uniform_real_distribution<float> exp_dist(-5.0f, 5.0f);
         return {base_dist(rng), exp_dist(rng)};
     }
     case BinaryMathOp::hypot_op: {
-        std::uniform_real_distribution<double> d(-1.0e8, 1.0e8);
+        std::uniform_real_distribution<float> d(-1.0e4f, 1.0e4f);
         return {d(rng), d(rng)};
     }
     case BinaryMathOp::atan2_op: {
-        std::uniform_real_distribution<double> d(-1.0e8, 1.0e8);
+        std::uniform_real_distribution<float> d(-1.0e4f, 1.0e4f);
         return {d(rng), d(rng)};
     }
     }
-    return {0.0, 0.0};
+    return {0.0f, 0.0f};
 }
 
-std::pair<double, double> sample_compare_input(std::mt19937_64& rng) {
-    std::uniform_real_distribution<double> d(-1.0e8, 1.0e8);
+std::pair<float, float> sample_compare_input(std::mt19937& rng) {
+    std::uniform_real_distribution<float> d(-1.0e4f, 1.0e4f);
     return {d(rng), d(rng)};
 }
 
-std::tuple<double, double, double> sample_clamp_input(std::mt19937_64& rng) {
-    std::uniform_real_distribution<double> value_dist(-1.0e8, 1.0e8);
-    std::uniform_real_distribution<double> bound_dist(-1.0e6, 1.0e6);
-    double lo = bound_dist(rng);
-    double hi = bound_dist(rng);
+std::tuple<float, float, float> sample_clamp_input(std::mt19937& rng) {
+    std::uniform_real_distribution<float> value_dist(-1.0e4f, 1.0e4f);
+    std::uniform_real_distribution<float> bound_dist(-2.0e3f, 2.0e3f);
+    float lo = bound_dist(rng);
+    float hi = bound_dist(rng);
     if (lo > hi) {
         std::swap(lo, hi);
     }
     return { value_dist(rng), lo, hi };
 }
 
-std::tuple<double, double, double> sample_fma_input(std::mt19937_64& rng) {
-    std::uniform_real_distribution<double> a_dist(-1.0e8, 1.0e8);
-    std::uniform_real_distribution<double> b_dist(-1.0e8, 1.0e8);
-    std::uniform_real_distribution<double> c_dist(-1.0e8, 1.0e8);
+std::tuple<float, float, float> sample_fma_input(std::mt19937& rng) {
+    std::uniform_real_distribution<float> a_dist(-1.0e4f, 1.0e4f);
+    std::uniform_real_distribution<float> b_dist(-1.0e4f, 1.0e4f);
+    std::uniform_real_distribution<float> c_dist(-1.0e4f, 1.0e4f);
     return { a_dist(rng), b_dist(rng), c_dist(rng) };
 }
 
 template <typename SimdType>
-bool run_float64_binary_test_for_type(
+bool run_float32_binary_test_for_type(
     const std::string& type_name,
     const std::string& op_name,
     ArithmeticOp op,
     CpuInformation cpu,
     TestHarness& harness) {
-    const std::string test_name = type_name + " Float64 " + op_name;
+    const std::string test_name = type_name + " Float32 " + op_name;
 
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
-    std::mt19937_64 rng(20260224ull);
-    std::uniform_real_distribution<double> small_dist(-1.0e6, 1.0e6);
-    std::uniform_real_distribution<double> tiny_dist(-1.0e-200, 1.0e-200);
-    std::uniform_real_distribution<double> large_dist(-1.0e200, 1.0e200);
+    std::mt19937 rng(20260224u);
+    std::uniform_real_distribution<float> small_dist(-1000.0f, 1000.0f);
+    std::uniform_real_distribution<float> tiny_dist(-1.0e-30f, 1.0e-30f);
+    std::uniform_real_distribution<float> large_dist(-1.0e30f, 1.0e30f);
 
-    for (int iteration = 0; iteration < 1000; ++iteration) {
+    for (int iteration = 0; iteration < 1200; ++iteration) {
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
-
         for (int lane = 0; lane < lanes; ++lane) {
-            double lhs = 0.0;
-            double rhs = 1.0;
+            float lhs = 0.0f;
+            float rhs = 1.0f;
             const int selector = (iteration + lane) % 3;
-
             if (selector == 0) {
                 lhs = small_dist(rng);
                 rhs = small_dist(rng);
@@ -586,23 +580,23 @@ bool run_float64_binary_test_for_type(
                 lhs = large_dist(rng);
                 rhs = tiny_dist(rng);
             }
-
-            if (op == ArithmeticOp::div && rhs == 0.0) { rhs = 1.0; }
-
+            if (op == ArithmeticOp::div && rhs == 0.0f) {
+                rhs = 1.0f;
+            }
             a.set_element(lane, lhs);
             b.set_element(lane, rhs);
         }
 
         for (const ArithmeticPath path : kArithmeticPaths) {
-            const double scalar = finite_scalar_for_op(op);
+            const float scalar = finite_scalar_for_op(op);
             alignas(SimdType) SimdType result{};
             apply_simd_op_with_path(a, b, scalar, op, path, result);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double lhs = a.element(lane);
-                const double rhs = b.element(lane);
-                const double expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
-                const double actual = result.element(lane);
-                if (!double_matches_exact(actual, expected)) {
+                const float lhs = a.element(lane);
+                const float rhs = b.element(lane);
+                const float expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
+                const float actual = result.element(lane);
+                if (!float_matches_exact(actual, expected)) {
                     harness.add_result(
                         test_name,
                         false,
@@ -613,21 +607,21 @@ bool run_float64_binary_test_for_type(
         }
     }
 
-    const double finite_edges[] = {
-        0.0,
-        -0.0,
-        1.0,
-        -1.0,
-        std::numeric_limits<double>::denorm_min(),
-        -std::numeric_limits<double>::denorm_min(),
-        1.0e-200,
-        -1.0e-200,
-        1.0e200,
-        -1.0e200,
-        std::numeric_limits<double>::min(),
-        -std::numeric_limits<double>::min(),
-        std::numeric_limits<double>::max() * 0.5,
-        -std::numeric_limits<double>::max() * 0.5
+    const float finite_edges[] = {
+        0.0f,
+        -0.0f,
+        1.0f,
+        -1.0f,
+        std::numeric_limits<float>::denorm_min(),
+        -std::numeric_limits<float>::denorm_min(),
+        1.0e-30f,
+        -1.0e-30f,
+        1.0e30f,
+        -1.0e30f,
+        std::numeric_limits<float>::min(),
+        -std::numeric_limits<float>::min(),
+        std::numeric_limits<float>::max() * 0.5f,
+        -std::numeric_limits<float>::max() * 0.5f
     };
     constexpr int finite_edge_count = static_cast<int>(sizeof(finite_edges) / sizeof(finite_edges[0]));
 
@@ -635,23 +629,23 @@ bool run_float64_binary_test_for_type(
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
         for (int lane = 0; lane < lanes; ++lane) {
-            const double lhs = finite_edges[(base + lane) % finite_edge_count];
-            double rhs = finite_edges[(base * 3 + lane + 1) % finite_edge_count];
-            if (op == ArithmeticOp::div && rhs == 0.0) { rhs = 1.0; }
+            const float lhs = finite_edges[(base + lane) % finite_edge_count];
+            float rhs = finite_edges[(base * 3 + lane + 1) % finite_edge_count];
+            if (op == ArithmeticOp::div && rhs == 0.0f) { rhs = 1.0f; }
             a.set_element(lane, lhs);
             b.set_element(lane, rhs);
         }
 
         for (const ArithmeticPath path : kArithmeticPaths) {
-            const double scalar = finite_scalar_for_op(op);
+            const float scalar = finite_scalar_for_op(op);
             alignas(SimdType) SimdType result{};
             apply_simd_op_with_path(a, b, scalar, op, path, result);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double lhs = a.element(lane);
-                const double rhs = b.element(lane);
-                const double expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
-                const double actual = result.element(lane);
-                if (!double_matches_exact(actual, expected)) {
+                const float lhs = a.element(lane);
+                const float rhs = b.element(lane);
+                const float expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
+                const float actual = result.element(lane);
+                if (!float_matches_exact(actual, expected)) {
                     harness.add_result(
                         test_name,
                         false,
@@ -662,17 +656,17 @@ bool run_float64_binary_test_for_type(
         }
     }
 
-    const double special_edges[] = {
-        0.0,
-        -0.0,
-        1.0,
-        -1.0,
-        std::numeric_limits<double>::infinity(),
-        -std::numeric_limits<double>::infinity(),
-        std::numeric_limits<double>::quiet_NaN(),
-        -std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::max(),
-        -std::numeric_limits<double>::max()
+    const float special_edges[] = {
+        0.0f,
+        -0.0f,
+        1.0f,
+        -1.0f,
+        std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity(),
+        std::numeric_limits<float>::quiet_NaN(),
+        -std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::max(),
+        -std::numeric_limits<float>::max()
     };
     constexpr int special_edge_count = static_cast<int>(sizeof(special_edges) / sizeof(special_edges[0]));
 
@@ -680,22 +674,22 @@ bool run_float64_binary_test_for_type(
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
         for (int lane = 0; lane < lanes; ++lane) {
-            const double lhs = special_edges[(base + lane) % special_edge_count];
-            const double rhs = special_edges[(base * 5 + lane + 1) % special_edge_count];
+            const float lhs = special_edges[(base + lane) % special_edge_count];
+            const float rhs = special_edges[(base * 5 + lane + 1) % special_edge_count];
             a.set_element(lane, lhs);
             b.set_element(lane, rhs);
         }
 
         for (const ArithmeticPath path : kArithmeticPaths) {
-            const double scalar = special_edges[(base * 7 + 3) % special_edge_count];
+            const float scalar = special_edges[(base * 7 + 3) % special_edge_count];
             alignas(SimdType) SimdType result{};
             apply_simd_op_with_path(a, b, scalar, op, path, result);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double lhs = a.element(lane);
-                const double rhs = b.element(lane);
-                const double expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
-                const double actual = result.element(lane);
-                if (!double_matches_exact(actual, expected)) {
+                const float lhs = a.element(lane);
+                const float rhs = b.element(lane);
+                const float expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
+                const float actual = result.element(lane);
+                if (!float_matches_exact(actual, expected)) {
                     harness.add_result(
                         test_name,
                         false,
@@ -711,13 +705,13 @@ bool run_float64_binary_test_for_type(
 }
 
 template <typename SimdType>
-bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+bool run_float32_math_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
-    std::mt19937_64 rng(20260304ull);
+    std::mt19937 rng(20260304u);
 
     const UnaryMathOp unary_ops[] = {
         UnaryMathOp::floor_op, UnaryMathOp::ceil_op, UnaryMathOp::trunc_op, UnaryMathOp::round_op, UnaryMathOp::fract_op,
@@ -730,7 +724,7 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
     };
 
     for (const UnaryMathOp op : unary_ops) {
-        const std::string test_name = type_name + " Float64 " + std::string(unary_math_name(op));
+        const std::string test_name = type_name + " Float32 " + std::string(unary_math_name(op));
         for (int iteration = 0; iteration < 500; ++iteration) {
             alignas(SimdType) SimdType value{};
             for (int lane = 0; lane < lanes; ++lane) {
@@ -739,9 +733,9 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
 
             const SimdType result = apply_simd_unary_math(value, op);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double expected = apply_fallback_unary(value.element(lane), op);
-                const double actual = result.element(lane);
-                if (!double_matches_fallback(actual, expected)) {
+                const float expected = apply_fallback_unary(value.element(lane), op);
+                const float actual = result.element(lane);
+                if (!float_matches_fallback(actual, expected)) {
                     harness.add_result(test_name, false, "mismatch, lane " + std::to_string(lane));
                     return false;
                 }
@@ -752,7 +746,7 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
 
     const BinaryMathOp binary_ops[] = { BinaryMathOp::pow_op, BinaryMathOp::hypot_op, BinaryMathOp::atan2_op };
     for (const BinaryMathOp op : binary_ops) {
-        const std::string test_name = type_name + " Float64 " + std::string(binary_math_name(op));
+        const std::string test_name = type_name + " Float32 " + std::string(binary_math_name(op));
         for (int iteration = 0; iteration < 500; ++iteration) {
             alignas(SimdType) SimdType lhs{};
             alignas(SimdType) SimdType rhs{};
@@ -764,9 +758,9 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
 
             const SimdType result = apply_simd_binary_math(lhs, rhs, op);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double expected = apply_fallback_binary_math(lhs.element(lane), rhs.element(lane), op);
-                const double actual = result.element(lane);
-                if (!double_matches_fallback(actual, expected)) {
+                const float expected = apply_fallback_binary_math(lhs.element(lane), rhs.element(lane), op);
+                const float actual = result.element(lane);
+                if (!float_matches_fallback(actual, expected)) {
                     harness.add_result(test_name, false, "mismatch, lane " + std::to_string(lane));
                     return false;
                 }
@@ -777,7 +771,7 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
 
     const CompareMathOp compare_ops[] = { CompareMathOp::min_op, CompareMathOp::max_op };
     for (const CompareMathOp op : compare_ops) {
-        const std::string test_name = type_name + " Float64 " + std::string(compare_math_name(op));
+        const std::string test_name = type_name + " Float32 " + std::string(compare_math_name(op));
         for (int iteration = 0; iteration < 500; ++iteration) {
             alignas(SimdType) SimdType lhs{};
             alignas(SimdType) SimdType rhs{};
@@ -789,9 +783,9 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
 
             const SimdType result = apply_simd_compare_math(lhs, rhs, op);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double expected = apply_fallback_compare_math(lhs.element(lane), rhs.element(lane), op);
-                const double actual = result.element(lane);
-                if (!double_matches_fallback(actual, expected)) {
+                const float expected = apply_fallback_compare_math(lhs.element(lane), rhs.element(lane), op);
+                const float actual = result.element(lane);
+                if (!float_matches_fallback(actual, expected)) {
                     harness.add_result(test_name, false, "mismatch, lane " + std::to_string(lane));
                     return false;
                 }
@@ -801,7 +795,7 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
     }
 
     {
-        const std::string test_name = type_name + " Float64 clamp";
+        const std::string test_name = type_name + " Float32 clamp";
         for (int iteration = 0; iteration < 500; ++iteration) {
             alignas(SimdType) SimdType value{};
             alignas(SimdType) SimdType lo{};
@@ -816,13 +810,13 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
             const SimdType unit_result = clamp(value);
             const SimdType range_result = clamp(value, lo, hi);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double unit_expected = apply_fallback_clamp_unit(value.element(lane));
-                const double range_expected = apply_fallback_clamp_range(value.element(lane), lo.element(lane), hi.element(lane));
-                if (!double_matches_fallback(unit_result.element(lane), unit_expected)) {
+                const float unit_expected = apply_fallback_clamp_unit(value.element(lane));
+                const float range_expected = apply_fallback_clamp_range(value.element(lane), lo.element(lane), hi.element(lane));
+                if (!float_matches_fallback(unit_result.element(lane), unit_expected)) {
                     harness.add_result(test_name, false, "unit clamp mismatch, lane " + std::to_string(lane));
                     return false;
                 }
-                if (!double_matches_fallback(range_result.element(lane), range_expected)) {
+                if (!float_matches_fallback(range_result.element(lane), range_expected)) {
                     harness.add_result(test_name, false, "range clamp mismatch, lane " + std::to_string(lane));
                     return false;
                 }
@@ -833,7 +827,7 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
 
     const FmaOp fma_ops[] = { FmaOp::fma_op, FmaOp::fms_op, FmaOp::fnma_op, FmaOp::fnms_op };
     for (const FmaOp op : fma_ops) {
-        const std::string test_name = type_name + " Float64 " + std::string(fma_name(op));
+        const std::string test_name = type_name + " Float32 " + std::string(fma_name(op));
         for (int iteration = 0; iteration < 500; ++iteration) {
             alignas(SimdType) SimdType a{};
             alignas(SimdType) SimdType b{};
@@ -847,9 +841,9 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
 
             const SimdType result = apply_simd_fma(a, b, c, op);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double expected = apply_fallback_fma(a.element(lane), b.element(lane), c.element(lane), op);
-                const double actual = result.element(lane);
-                if (!double_matches_fallback(actual, expected)) {
+                const float expected = apply_fallback_fma(a.element(lane), b.element(lane), c.element(lane), op);
+                const float actual = result.element(lane);
+                if (!float_matches_fallback(actual, expected)) {
                     harness.add_result(test_name, false, "mismatch, lane " + std::to_string(lane));
                     return false;
                 }
@@ -861,7 +855,7 @@ bool run_float64_math_test_for_type(const std::string& type_name, CpuInformation
     return true;
 }
 
-bool reciprocal_matches_true(double actual, double expected) {
+bool reciprocal_matches_true(float actual, float expected) {
     if (std::isnan(actual) && std::isnan(expected)) {
         return true;
     }
@@ -869,80 +863,78 @@ bool reciprocal_matches_true(double actual, double expected) {
         return actual == expected;
     }
 
-    const double abs_diff = std::fabs(actual - expected);
-    const double scale = std::max(1.0, std::fabs(expected));
-    return abs_diff <= (1.0e-4 * scale);
+    const float abs_diff = std::fabs(actual - expected);
+    const float scale = std::max(1.0f, std::fabs(expected));
+    return abs_diff <= (7.5e-4f * scale);
 }
 
-template <typename SimdType>
-bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
-    const std::string test_name = type_name + " Float64 helpers";
+template <typename SimdType, typename UIntType>
+bool run_float32_helper_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Float32 helpers";
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
-    using BitUintType = decltype(std::declval<SimdType>().bitcast_to_uint());
-    if (SimdType::size_of_element() != static_cast<int>(sizeof(double))) {
+    if (SimdType::size_of_element() != static_cast<int>(sizeof(float))) {
         harness.add_result(test_name, false, "size_of_element() mismatch");
         return false;
     }
 
     {
-        const SimdType sequential = SimdType::make_sequential(-6.25);
+        const SimdType sequential = SimdType::make_sequential(-3.5f);
         for (int lane = 0; lane < lanes; ++lane) {
-            const double expected = -6.25 + static_cast<double>(lane);
-            if (!double_matches_fallback(sequential.element(lane), expected)) {
+            const float expected = -3.5f + static_cast<float>(lane);
+            if (!float_matches_fallback(sequential.element(lane), expected)) {
                 harness.add_result(test_name, false, "make_sequential mismatch, lane " + std::to_string(lane));
                 return false;
             }
         }
     }
 
-    if constexpr (requires { SimdType::make_set1(3.5); }) {
-        const SimdType set_value = SimdType::make_set1(3.5);
+    {
+        const SimdType set_value = SimdType::make_set1(4.25f);
         for (int lane = 0; lane < lanes; ++lane) {
-            if (!double_matches_fallback(set_value.element(lane), 3.5)) {
+            if (!float_matches_fallback(set_value.element(lane), 4.25f)) {
                 harness.add_result(test_name, false, "make_set1 mismatch, lane " + std::to_string(lane));
                 return false;
             }
         }
     }
 
-    if constexpr (requires (BitUintType ints) { SimdType::make_from_uints_52bits(ints); }) {
-        alignas(BitUintType) BitUintType ints{};
-        constexpr uint64_t kMask52 = 0x000fffffffffffffull;
+    {
+        alignas(UIntType) UIntType ints{};
         for (int lane = 0; lane < lanes; ++lane) {
-            ints.set_element(lane, (0x000123456789abcdull + static_cast<uint64_t>(lane) * 97ull) & kMask52);
+            ints.set_element(lane, static_cast<uint32_t>(lane * 17 + 3));
         }
-        const SimdType converted = SimdType::make_from_uints_52bits(ints);
+        const SimdType converted = SimdType::make_from_int32(ints);
         for (int lane = 0; lane < lanes; ++lane) {
-            const double expected = static_cast<double>(ints.element(lane) & kMask52);
-            if (!double_matches_fallback(converted.element(lane), expected)) {
-                harness.add_result(test_name, false, "make_from_uints_52bits mismatch, lane " + std::to_string(lane));
+            const float expected = static_cast<float>(ints.element(lane));
+            if (!float_matches_fallback(converted.element(lane), expected)) {
+                harness.add_result(test_name, false, "make_from_int32 mismatch, lane " + std::to_string(lane));
                 return false;
             }
         }
     }
 
     {
-        constexpr uint64_t bit_patterns[] = {
-            0x0000000000000000ull,
-            0x8000000000000000ull,
-            0x3ff0000000000000ull,
-            0xbff0000000000000ull,
-            0x400921fb54442d18ull,
-            0x7ff0000000000000ull,
-            0xfff0000000000000ull,
-            0x7ff8000000000000ull
+        constexpr uint32_t bit_patterns[] = {
+            0x00000000u,
+            0x80000000u,
+            0x3f800000u,
+            0xbf800000u,
+            0x40490fdbu,
+            0x7f800000u,
+            0xff800000u,
+            0x7fc00000u
         };
         alignas(SimdType) SimdType values{};
         for (int lane = 0; lane < lanes; ++lane) {
-            values.set_element(lane, std::bit_cast<double>(bit_patterns[lane % static_cast<int>(sizeof(bit_patterns) / sizeof(bit_patterns[0]))]));
+            values.set_element(lane, std::bit_cast<float>(bit_patterns[lane % static_cast<int>(sizeof(bit_patterns) / sizeof(bit_patterns[0]))]));
         }
-        const BitUintType bits = values.bitcast_to_uint();
+        const UIntType bits = values.bitcast_to_uint();
         for (int lane = 0; lane < lanes; ++lane) {
-            const uint64_t expected = bit_patterns[lane % static_cast<int>(sizeof(bit_patterns) / sizeof(bit_patterns[0]))];
+            const uint32_t expected = bit_patterns[lane % static_cast<int>(sizeof(bit_patterns) / sizeof(bit_patterns[0]))];
             if (bits.element(lane) != expected) {
                 harness.add_result(test_name, false, "bitcast_to_uint mismatch, lane " + std::to_string(lane));
                 return false;
@@ -951,26 +943,26 @@ bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformati
     }
 
     {
-        std::mt19937_64 rng(20260304ull);
-        std::uniform_real_distribution<double> value_dist(-100.0, 100.0);
+        std::mt19937 rng(20260304u);
+        std::uniform_real_distribution<float> value_dist(-50.0f, 50.0f);
         for (int iteration = 0; iteration < 300; ++iteration) {
             alignas(SimdType) SimdType value{};
             for (int lane = 0; lane < lanes; ++lane) {
-                double lane_value = value_dist(rng);
-                if (std::fabs(lane_value) < 0.5) {
-                    lane_value = (lane % 2 == 0) ? 0.5 : -0.5;
+                float lane_value = value_dist(rng);
+                if (std::fabs(lane_value) < 0.25f) {
+                    lane_value = (lane % 2 == 0) ? 0.25f : -0.25f;
                 }
                 value.set_element(lane, lane_value);
             }
 
             const SimdType reciprocal = reciprocal_approx(value);
-            const SimdType scalar_clamped = clamp(value, -4.5f, 9.25f);
+            const SimdType scalar_clamped = clamp(value, -2.25f, 7.5f);
             for (int lane = 0; lane < lanes; ++lane) {
-                const double lane_value = value.element(lane);
-                const double reciprocal_expected = 1.0 / lane_value;
-                const double clamp_expected = clamp(FallbackFloat64(lane_value), -4.5, 9.25).v;
-                const bool reciprocal_ok = []<typename T>(double actual, double expected) {
-                    if constexpr (std::is_same_v<T, FallbackFloat64>) {
+                const float lane_value = value.element(lane);
+                const float reciprocal_expected = 1.0f / lane_value;
+                const float clamp_expected = clamp(FallbackFloat32(lane_value), -2.25f, 7.5f).v;
+                const bool reciprocal_ok = []<typename T>(float actual, float expected) {
+                    if constexpr (std::is_same_v<T, FallbackFloat32>) {
                         return actual == expected;
                     }
                     else {
@@ -981,7 +973,7 @@ bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformati
                     harness.add_result(test_name, false, "reciprocal_approx mismatch, lane " + std::to_string(lane));
                     return false;
                 }
-                if (!double_matches_fallback(scalar_clamped.element(lane), clamp_expected)) {
+                if (!float_matches_fallback(scalar_clamped.element(lane), clamp_expected)) {
                     harness.add_result(test_name, false, "scalar clamp mismatch, lane " + std::to_string(lane));
                     return false;
                 }
@@ -994,37 +986,37 @@ bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformati
 }
 
 template <typename SimdType>
-bool run_float64_compare_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
-    const std::string test_name = type_name + " Float64 compare/blend";
+bool run_float32_compare_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Float32 compare/blend";
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
-    std::mt19937_64 rng(20260304ull);
-    std::uniform_real_distribution<double> value_dist(-1.0e6, 1.0e6);
-    std::uniform_real_distribution<double> choice_dist(-1000.0, 1000.0);
+    std::mt19937 rng(20260304u);
+    std::uniform_real_distribution<float> value_dist(-1000.0f, 1000.0f);
+    std::uniform_real_distribution<float> choice_dist(-100.0f, 100.0f);
 
     for (int iteration = 0; iteration < 500; ++iteration) {
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
         alignas(SimdType) SimdType if_true{};
         alignas(SimdType) SimdType if_false{};
-        alignas(SimdType) SimdType zero(0.0);
-        alignas(SimdType) SimdType ones(1.0);
+        alignas(SimdType) SimdType zero(0.0f);
+        alignas(SimdType) SimdType ones(1.0f);
         alignas(SimdType) SimdType nan_input{};
 
         for (int lane = 0; lane < lanes; ++lane) {
-            const double av = value_dist(rng);
-            double bv = value_dist(rng);
+            const float av = value_dist(rng);
+            float bv = value_dist(rng);
             if (bv == av) {
-                bv = std::nextafter(av, std::numeric_limits<double>::infinity());
+                bv = std::nextafter(av, std::numeric_limits<float>::infinity());
             }
             a.set_element(lane, av);
             b.set_element(lane, bv);
             if_true.set_element(lane, choice_dist(rng));
             if_false.set_element(lane, choice_dist(rng));
-            nan_input.set_element(lane, (lane % 3 == 0) ? std::numeric_limits<double>::quiet_NaN() : av);
+            nan_input.set_element(lane, (lane % 3 == 0) ? std::numeric_limits<float>::quiet_NaN() : av);
         }
 
         const auto mask_eq = compare_equal(a, b);
@@ -1049,8 +1041,8 @@ bool run_float64_compare_test_for_type(const std::string& type_name, CpuInformat
         const SimdType if_is_nan = if_nan(nan_input, if_true, if_false);
 
         for (int lane = 0; lane < lanes; ++lane) {
-            const FallbackFloat64 fa(a.element(lane));
-            const FallbackFloat64 fb(b.element(lane));
+            const FallbackFloat32 fa(a.element(lane));
+            const FallbackFloat32 fb(b.element(lane));
             const bool eq = compare_equal(fa, fb);
             const bool lt = compare_less(fa, fb);
             const bool le = compare_less_equal(fa, fb);
@@ -1058,24 +1050,24 @@ bool run_float64_compare_test_for_type(const std::string& type_name, CpuInformat
             const bool ge = compare_greater_equal(fa, fb);
             const bool is_nan = std::isnan(nan_input.element(lane));
 
-            if (!double_matches_fallback(blend_eq.element(lane), eq ? 1.0 : 0.0) ||
-                !double_matches_fallback(blend_lt.element(lane), lt ? 1.0 : 0.0) ||
-                !double_matches_fallback(blend_le.element(lane), le ? 1.0 : 0.0) ||
-                !double_matches_fallback(blend_gt.element(lane), gt ? 1.0 : 0.0) ||
-                !double_matches_fallback(blend_ge.element(lane), ge ? 1.0 : 0.0) ||
-                !double_matches_fallback(blend_nan.element(lane), is_nan ? 1.0 : 0.0)) {
+            if (!float_matches_fallback(blend_eq.element(lane), eq ? 1.0f : 0.0f) ||
+                !float_matches_fallback(blend_lt.element(lane), lt ? 1.0f : 0.0f) ||
+                !float_matches_fallback(blend_le.element(lane), le ? 1.0f : 0.0f) ||
+                !float_matches_fallback(blend_gt.element(lane), gt ? 1.0f : 0.0f) ||
+                !float_matches_fallback(blend_ge.element(lane), ge ? 1.0f : 0.0f) ||
+                !float_matches_fallback(blend_nan.element(lane), is_nan ? 1.0f : 0.0f)) {
                 harness.add_result(test_name, false, "blend(compare/isnan) mismatch, lane " + std::to_string(lane));
                 return false;
             }
 
-            const double t = if_true.element(lane);
-            const double f = if_false.element(lane);
-            if (!double_matches_fallback(if_eq.element(lane), eq ? t : f) ||
-                !double_matches_fallback(if_lt.element(lane), lt ? t : f) ||
-                !double_matches_fallback(if_le.element(lane), le ? t : f) ||
-                !double_matches_fallback(if_gt.element(lane), gt ? t : f) ||
-                !double_matches_fallback(if_ge.element(lane), ge ? t : f) ||
-                !double_matches_fallback(if_is_nan.element(lane), is_nan ? t : f)) {
+            const float t = if_true.element(lane);
+            const float f = if_false.element(lane);
+            if (!float_matches_fallback(if_eq.element(lane), eq ? t : f) ||
+                !float_matches_fallback(if_lt.element(lane), lt ? t : f) ||
+                !float_matches_fallback(if_le.element(lane), le ? t : f) ||
+                !float_matches_fallback(if_gt.element(lane), gt ? t : f) ||
+                !float_matches_fallback(if_ge.element(lane), ge ? t : f) ||
+                !float_matches_fallback(if_is_nan.element(lane), is_nan ? t : f)) {
                 harness.add_result(test_name, false, "if_* mismatch, lane " + std::to_string(lane));
                 return false;
             }
@@ -1098,33 +1090,33 @@ bool run_float64_compare_test_for_type(const std::string& type_name, CpuInformat
 }
 
 template <typename SimdType>
-bool run_float64_suite_for_type(const char* type_name, CpuInformation cpu, TestHarness& harness) {
-    return run_float64_binary_test_for_type<SimdType>(type_name, "addition", ArithmeticOp::add, cpu, harness) &&
-           run_float64_binary_test_for_type<SimdType>(type_name, "subtraction", ArithmeticOp::sub, cpu, harness) &&
-           run_float64_binary_test_for_type<SimdType>(type_name, "multiplication", ArithmeticOp::mul, cpu, harness) &&
-           run_float64_binary_test_for_type<SimdType>(type_name, "division", ArithmeticOp::div, cpu, harness) &&
-           run_float64_compare_test_for_type<SimdType>(type_name, cpu, harness) &&
-           run_float64_helper_test_for_type<SimdType>(type_name, cpu, harness) &&
-           run_float64_math_test_for_type<SimdType>(type_name, cpu, harness);
+bool run_float32_suite_for_type(const char* type_name, CpuInformation cpu, TestHarness& harness) {
+    return run_float32_binary_test_for_type<SimdType>(type_name, "addition", ArithmeticOp::add, cpu, harness) &&
+           run_float32_binary_test_for_type<SimdType>(type_name, "subtraction", ArithmeticOp::sub, cpu, harness) &&
+           run_float32_binary_test_for_type<SimdType>(type_name, "multiplication", ArithmeticOp::mul, cpu, harness) &&
+           run_float32_binary_test_for_type<SimdType>(type_name, "division", ArithmeticOp::div, cpu, harness) &&
+           run_float32_compare_test_for_type<SimdType>(type_name, cpu, harness) &&
+           run_float32_helper_test_for_type<SimdType, typename SimdType::U>(type_name, cpu, harness) &&
+           run_float32_math_test_for_type<SimdType>(type_name, cpu, harness);
 }
 
 } // namespace
 
-void run_float64_arithmetic_tests(TestHarness& harness) {
-    std::cout << "\n===== Float64 Arithmetic Tests =====\n";
+void run_float32_arithmetic_tests(TestHarness& harness) {
+    std::cout << "\n===== Float32 Arithmetic Tests =====\n";
     if (harness.should_halt()) {
         return;
     }
 #if defined(_M_X64) || defined(__x86_64)
     CpuInformation cpu{};
 #define MT_RUN_OR_HALT(expr) do { if (!(expr)) { return; } } while (false)
-    MT_RUN_OR_HALT(run_float64_suite_for_type<FallbackFloat64>("Fallback", cpu, harness));
-    MT_RUN_OR_HALT(run_float64_suite_for_type<Simd128Float64>("Simd128", cpu, harness));
+    MT_RUN_OR_HALT(run_float32_suite_for_type<FallbackFloat32>("Fallback", cpu, harness));
+    MT_RUN_OR_HALT(run_float32_suite_for_type<Simd128Float32>("Simd128", cpu, harness));
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
-    MT_RUN_OR_HALT(run_float64_suite_for_type<Simd256Float64>("Simd256", cpu, harness));
+    MT_RUN_OR_HALT(run_float32_suite_for_type<Simd256Float32>("Simd256", cpu, harness));
 #endif
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
-    MT_RUN_OR_HALT(run_float64_suite_for_type<Simd512Float64>("Simd512", cpu, harness));
+    MT_RUN_OR_HALT(run_float32_suite_for_type<Simd512Float32>("Simd512", cpu, harness));
 #endif
 #undef MT_RUN_OR_HALT
 #endif

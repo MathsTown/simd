@@ -15,8 +15,8 @@ Current scope:
 
 #include <iostream>
 
-#include "../Include/environment.h"
-#include "../Include/simd-cpuid.h"
+#include "../include/environment.h"
+#include "../include/simd-cpuid.h"
 
 #include "test_f32.h"
 #include "test_f64.h"

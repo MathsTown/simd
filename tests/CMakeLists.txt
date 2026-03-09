@@ -27,7 +27,7 @@ add_executable(simd_test
     test_u64.cpp
 )
 
-target_include_directories(simd_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../Include)
+target_include_directories(simd_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 
 if (SIMD_TEST_MODE STREQUAL "SSE2")
     target_compile_definitions(simd_test PRIVATE SIMD_TEST_MIN_LEVEL=1)

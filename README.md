@@ -237,9 +237,9 @@ If you wish to run tests, these are currently setup to run under PowerShell for 
 Windows (PowerShell), from the repository root (default generator/compiler on your machine):
 
 ```powershell
-cmake -S Tests -B Build
-cmake --build Build --config Release
-.\Build\Release\simd_test.exe
+cmake -S tests -B build
+cmake --build build --config Release
+.\build\Release\simd_test.exe
 ```
 
 ### Test Microsoft C++ Compiler
@@ -247,9 +247,9 @@ cmake --build Build --config Release
 Windows (PowerShell), explicitly with MSVC (`cl`):
 
 ```powershell
-cmake -S Tests -B Build\msvc -G "Visual Studio 17 2022" -A x64
-cmake --build Build\msvc --config Release
-.\Build\msvc\Release\simd_test.exe
+cmake -S tests -B build\msvc -G "Visual Studio 17 2022" -A x64
+cmake --build build\msvc --config Release
+.\build\msvc\Release\simd_test.exe
 ```
 
 ### Test Clang (clang-cl) C++ Compiler
@@ -257,9 +257,9 @@ cmake --build Build\msvc --config Release
 Windows (PowerShell), explicitly with Clang (`clang-cl`):
 
 ```powershell
-cmake -S Tests -B Build\clang -G "Visual Studio 17 2022" -A x64 -T ClangCL
-cmake --build Build\clang --config Release
-.\Build\clang\Release\simd_test.exe
+cmake -S tests -B build\clang -G "Visual Studio 17 2022" -A x64 -T ClangCL
+cmake --build build\clang --config Release
+.\build\clang\Release\simd_test.exe
 ```
 
 ### Test GCC C++ Compiler 
@@ -268,23 +268,23 @@ GCC really does not like to see intrinsics from higher levels in the code, even 
 Windows (PowerShell), GCC level 1 mode (128 bit types, `SSE2` minimum):
 
 ```powershell
-cmake -S Tests -B Build\gcc-sse2 -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -DSIMD_TEST_MODE=SSE2
-cmake --build Build\gcc-sse2
-.\Build\gcc-sse2\simd_test.exe
+cmake -S tests -B build\gcc-sse2 -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -DSIMD_TEST_MODE=SSE2
+cmake --build build\gcc-sse2
+.\build\gcc-sse2\simd_test.exe
 ```
 
 Windows (PowerShell), GCC level 3 mode (256 bit types, `AVX2` minimum):
 
 ```powershell
-cmake -S Tests -B Build\gcc-avx2 -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -DSIMD_TEST_MODE=AVX2
-cmake --build Build\gcc-avx2
-.\Build\gcc-avx2\simd_test.exe
+cmake -S tests -B build\gcc-avx2 -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -DSIMD_TEST_MODE=AVX2
+cmake --build build\gcc-avx2
+.\build\gcc-avx2\simd_test.exe
 ```
 
 Windows (PowerShell), GCC level 4 mode (512 bit types, `AVX-512f and AVX-512dq` minimum):
 
 ```powershell
-cmake -S Tests -B Build\gcc-avx512 -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -DSIMD_TEST_MODE=AVX512
-cmake --build Build\gcc-avx512
-.\Build\gcc-avx512\simd_test.exe
+cmake -S tests -B build\gcc-avx512 -G "MinGW Makefiles" -DCMAKE_CXX_COMPILER=g++ -DSIMD_TEST_MODE=AVX512
+cmake --build build\gcc-avx512
+.\build\gcc-avx512\simd_test.exe
 ```

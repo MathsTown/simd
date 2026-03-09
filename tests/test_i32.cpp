@@ -5,11 +5,11 @@ Authors:        (c) 2026 Maths Town
 Licence:        The MIT License
 
 *********************************************************************************************************
-UInt32 SIMD tests.
-Uses FallbackUInt32 as the reference implementation.
+Int32 SIMD tests.
+Uses FallbackInt32 as the reference implementation.
 *********************************************************************************************************/
 
-#include "test_u32.h"
+#include "test_i32.h"
 
 #include <cstdint>
 #include <iostream>
@@ -17,9 +17,8 @@ Uses FallbackUInt32 as the reference implementation.
 #include <random>
 #include <string_view>
 
-#include "../Include/simd-cpuid.h"
-#include "../Include/simd-concepts.h"
-#include "../Include/simd-uint32.h"
+#include "../include/simd-cpuid.h"
+#include "../include/simd-int32.h"
 
 namespace {
 
@@ -46,9 +45,9 @@ constexpr ArithmeticPath kArithmeticPaths[] = {
     ArithmeticPath::compound_scalar
 };
 
-struct U32Pair {
-    uint32_t lhs;
-    uint32_t rhs;
+struct I32Pair {
+    int32_t lhs;
+    int32_t rhs;
 };
 
 std::string_view path_name(ArithmeticPath path) {
@@ -67,28 +66,34 @@ std::string_view path_name(ArithmeticPath path) {
     return "compound op scalar";
 }
 
-uint32_t sanitize_divisor(uint32_t rhs) {
-    return rhs == 0u ? 1u : rhs;
+int32_t sanitize_divisor(int32_t lhs, int32_t rhs) {
+    if (rhs == 0) {
+        return 1;
+    }
+    if (lhs == std::numeric_limits<int32_t>::min() && rhs == -1) {
+        return 1;
+    }
+    return rhs;
 }
 
-uint32_t apply_fallback_binary(uint32_t lhs, uint32_t rhs, ArithmeticOp op) {
+int32_t apply_fallback_binary(int32_t lhs, int32_t rhs, ArithmeticOp op) {
     if (op == ArithmeticOp::add) {
-        return (FallbackUInt32(lhs) + FallbackUInt32(rhs)).v;
+        return (FallbackInt32(lhs) + FallbackInt32(rhs)).v;
     }
     if (op == ArithmeticOp::sub) {
-        return (FallbackUInt32(lhs) - FallbackUInt32(rhs)).v;
+        return (FallbackInt32(lhs) - FallbackInt32(rhs)).v;
     }
     if (op == ArithmeticOp::mul) {
-        return (FallbackUInt32(lhs) * FallbackUInt32(rhs)).v;
+        return (FallbackInt32(lhs) * FallbackInt32(rhs)).v;
     }
-    return (FallbackUInt32(lhs) / FallbackUInt32(rhs)).v;
+    return (FallbackInt32(lhs) / FallbackInt32(rhs)).v;
 }
 
 template <typename SimdType>
 void apply_simd_op_with_path(
     const SimdType& a,
     const SimdType& b,
-    uint32_t scalar,
+    int32_t scalar,
     ArithmeticOp op,
     ArithmeticPath path,
     SimdType& out) {
@@ -129,10 +134,10 @@ void apply_simd_op_with_path(
     else { out /= scalar; }
 }
 
-uint32_t apply_fallback_op_with_path(
-    uint32_t lhs,
-    uint32_t rhs,
-    uint32_t scalar,
+int32_t apply_fallback_op_with_path(
+    int32_t lhs,
+    int32_t rhs,
+    int32_t scalar,
     ArithmeticOp op,
     ArithmeticPath path) {
     if (path == ArithmeticPath::vector_vector) {
@@ -145,15 +150,15 @@ uint32_t apply_fallback_op_with_path(
         return apply_fallback_binary(scalar, rhs, op);
     }
     if (path == ArithmeticPath::compound_vector) {
-        FallbackUInt32 out(lhs);
-        if (op == ArithmeticOp::add) { out += FallbackUInt32(rhs); }
-        else if (op == ArithmeticOp::sub) { out -= FallbackUInt32(rhs); }
-        else if (op == ArithmeticOp::mul) { out *= FallbackUInt32(rhs); }
-        else { out /= FallbackUInt32(rhs); }
+        FallbackInt32 out(lhs);
+        if (op == ArithmeticOp::add) { out += FallbackInt32(rhs); }
+        else if (op == ArithmeticOp::sub) { out -= FallbackInt32(rhs); }
+        else if (op == ArithmeticOp::mul) { out *= FallbackInt32(rhs); }
+        else { out /= FallbackInt32(rhs); }
         return out.v;
     }
 
-    FallbackUInt32 out(lhs);
+    FallbackInt32 out(lhs);
     if (op == ArithmeticOp::add) { out += scalar; }
     else if (op == ArithmeticOp::sub) { out -= scalar; }
     else if (op == ArithmeticOp::mul) { out *= scalar; }
@@ -161,57 +166,57 @@ uint32_t apply_fallback_op_with_path(
     return out.v;
 }
 
-uint32_t scalar_for_op(ArithmeticOp op) {
-    if (op == ArithmeticOp::add) { return 37u; }
-    if (op == ArithmeticOp::sub) { return 19u; }
-    if (op == ArithmeticOp::mul) { return 3u; }
-    return 5u;
+int32_t scalar_for_op(ArithmeticOp op) {
+    if (op == ArithmeticOp::add) { return 37; }
+    if (op == ArithmeticOp::sub) { return -19; }
+    if (op == ArithmeticOp::mul) { return -3; }
+    return 3;
 }
 
-const U32Pair* edge_pairs_for_op(ArithmeticOp op) {
-    static constexpr U32Pair kAddPairs[] = {
-        {0u, 0u},
-        {1u, 1u},
-        {std::numeric_limits<uint32_t>::max(), 1u},      // overflow wrap
-        {std::numeric_limits<uint32_t>::max(), 2u},      // overflow wrap
-        {0x80000000u, 0x80000000u},                      // high bit carry
-        {123456789u, 4000000000u},
-        {std::numeric_limits<uint32_t>::max() - 5u, 10u},
-        {17u, 999999937u},
-        {4000000000u, 4000000000u}
+const I32Pair* edge_pairs_for_op(ArithmeticOp op) {
+    static constexpr I32Pair kAddPairs[] = {
+        {0, 0},
+        {1, -1},
+        {-1, 1},
+        {std::numeric_limits<int32_t>::max(), 0},
+        {std::numeric_limits<int32_t>::min(), 0},
+        {std::numeric_limits<int32_t>::max(), -1},
+        {std::numeric_limits<int32_t>::min(), 1},
+        {123456, -654321},
+        {-700000, 800000}
     };
-    static constexpr U32Pair kSubPairs[] = {
-        {0u, 0u},
-        {1u, 1u},
-        {0u, 1u},                                         // underflow wrap
-        {0u, std::numeric_limits<uint32_t>::max()},      // underflow wrap
-        {17u, 999999937u},
-        {123456789u, 4000000000u},
-        {std::numeric_limits<uint32_t>::max(), 1u},
-        {0x80000000u, 0x80000001u},
-        {4000000000u, 4000000000u}
+    static constexpr I32Pair kSubPairs[] = {
+        {0, 0},
+        {1, 1},
+        {-1, -1},
+        {std::numeric_limits<int32_t>::max(), 0},
+        {std::numeric_limits<int32_t>::min(), 0},
+        {std::numeric_limits<int32_t>::max(), 1},
+        {std::numeric_limits<int32_t>::min(), -1},
+        {123456, 654321},
+        {-700000, -800000}
     };
-    static constexpr U32Pair kMulPairs[] = {
-        {0u, 0u},
-        {1u, 1u},
-        {std::numeric_limits<uint32_t>::max(), 2u},      // overflow wrap
-        {0x80000000u, 2u},                               // wraps to 0
-        {0xFFFFFFFFu, 0xFFFFFFFFu},                      // overflow wrap
-        {65536u, 65536u},                                // wraps to 0
-        {123456789u, 4000000000u},
-        {17u, 999999937u},
-        {0xF0000000u, 0x10u}
+    static constexpr I32Pair kMulPairs[] = {
+        {0, 0},
+        {1, -1},
+        {-1, -1},
+        {46340, 46340},
+        {-46340, 46340},
+        {30000, -30000},
+        {std::numeric_limits<int32_t>::max(), 0},
+        {std::numeric_limits<int32_t>::min(), 0},
+        {12345, -23456}
     };
-    static constexpr U32Pair kDivPairs[] = {
-        {0u, 1u},
-        {1u, 1u},
-        {std::numeric_limits<uint32_t>::max(), 1u},
-        {std::numeric_limits<uint32_t>::max(), 2u},
-        {std::numeric_limits<uint32_t>::max(), std::numeric_limits<uint32_t>::max()},
-        {123456789u, 3u},
-        {4000000000u, 17u},
-        {0x80000000u, 0x10000u},
-        {0xF0000000u, 0x10u}
+    static constexpr I32Pair kDivPairs[] = {
+        {0, 1},
+        {1, 1},
+        {-1, 1},
+        {std::numeric_limits<int32_t>::max(), 1},
+        {std::numeric_limits<int32_t>::min(), 1},
+        {std::numeric_limits<int32_t>::max(), -1},
+        {std::numeric_limits<int32_t>::min(), 2},
+        {123456, -3},
+        {-700000, 7}
     };
 
     if (op == ArithmeticOp::add) {
@@ -268,30 +273,30 @@ void apply_bitwise_compound(const SimdType& a, const SimdType& b, BitwiseOp op, 
     else { out ^= b; }
 }
 
-uint32_t apply_fallback_bitwise_binary(uint32_t lhs, uint32_t rhs, BitwiseOp op) {
-    if (op == BitwiseOp::bit_and) { return (FallbackUInt32(lhs) & FallbackUInt32(rhs)).v; }
-    if (op == BitwiseOp::bit_or) { return (FallbackUInt32(lhs) | FallbackUInt32(rhs)).v; }
-    return (FallbackUInt32(lhs) ^ FallbackUInt32(rhs)).v;
+int32_t apply_fallback_bitwise_binary(int32_t lhs, int32_t rhs, BitwiseOp op) {
+    if (op == BitwiseOp::bit_and) { return (FallbackInt32(lhs) & FallbackInt32(rhs)).v; }
+    if (op == BitwiseOp::bit_or) { return (FallbackInt32(lhs) | FallbackInt32(rhs)).v; }
+    return (FallbackInt32(lhs) ^ FallbackInt32(rhs)).v;
 }
 
-uint32_t apply_fallback_bitwise_compound(uint32_t lhs, uint32_t rhs, BitwiseOp op) {
-    FallbackUInt32 out(lhs);
-    if (op == BitwiseOp::bit_and) { out &= FallbackUInt32(rhs); }
-    else if (op == BitwiseOp::bit_or) { out |= FallbackUInt32(rhs); }
-    else { out ^= FallbackUInt32(rhs); }
+int32_t apply_fallback_bitwise_compound(int32_t lhs, int32_t rhs, BitwiseOp op) {
+    FallbackInt32 out(lhs);
+    if (op == BitwiseOp::bit_and) { out &= FallbackInt32(rhs); }
+    else if (op == BitwiseOp::bit_or) { out |= FallbackInt32(rhs); }
+    else { out ^= FallbackInt32(rhs); }
     return out.v;
 }
 
 template <typename SimdType>
-bool run_uint32_bitwise_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
-    const std::string test_name = type_name + " UInt32 bitwise";
+bool run_int32_bitwise_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Int32 bitwise";
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
     std::mt19937 rng(20260224u);
-    std::uniform_int_distribution<uint32_t> dist(0u, std::numeric_limits<uint32_t>::max());
+    std::uniform_int_distribution<int32_t> dist(std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
 
     for (const BitwiseOp op : kBitwiseOps) {
         for (int iteration = 0; iteration < 800; ++iteration) {
@@ -307,10 +312,10 @@ bool run_uint32_bitwise_test_for_type(const std::string& type_name, CpuInformati
             apply_bitwise_binary(a, b, op, binary_result);
             apply_bitwise_compound(a, b, op, compound_result);
             for (int lane = 0; lane < lanes; ++lane) {
-                const uint32_t lhs = a.element(lane);
-                const uint32_t rhs = b.element(lane);
-                const uint32_t expected_binary = apply_fallback_bitwise_binary(lhs, rhs, op);
-                const uint32_t expected_compound = apply_fallback_bitwise_compound(lhs, rhs, op);
+                const int32_t lhs = a.element(lane);
+                const int32_t rhs = b.element(lane);
+                const int32_t expected_binary = apply_fallback_bitwise_binary(lhs, rhs, op);
+                const int32_t expected_compound = apply_fallback_bitwise_compound(lhs, rhs, op);
                 if (binary_result.element(lane) != expected_binary) {
                     harness.add_result(
                         test_name,
@@ -329,16 +334,16 @@ bool run_uint32_bitwise_test_for_type(const std::string& type_name, CpuInformati
         }
     }
 
-    const uint32_t edges[] = {
-        0u,
-        1u,
-        std::numeric_limits<uint32_t>::max(),
-        0x55555555u,
-        0xAAAAAAAAu,
-        0x12345678u,
-        0x87654321u,
-        0x80000000u,
-        0x7FFFFFFFu
+    const int32_t edges[] = {
+        0,
+        1,
+        -1,
+        std::numeric_limits<int32_t>::max(),
+        std::numeric_limits<int32_t>::min(),
+        static_cast<int32_t>(0x55555555u),
+        static_cast<int32_t>(0xAAAAAAAAu),
+        0x12345678,
+        static_cast<int32_t>(0x87654321u)
     };
     constexpr int edge_count = static_cast<int>(sizeof(edges) / sizeof(edges[0]));
 
@@ -356,10 +361,10 @@ bool run_uint32_bitwise_test_for_type(const std::string& type_name, CpuInformati
             apply_bitwise_binary(a, b, op, binary_result);
             apply_bitwise_compound(a, b, op, compound_result);
             for (int lane = 0; lane < lanes; ++lane) {
-                const uint32_t lhs = a.element(lane);
-                const uint32_t rhs = b.element(lane);
-                const uint32_t expected_binary = apply_fallback_bitwise_binary(lhs, rhs, op);
-                const uint32_t expected_compound = apply_fallback_bitwise_compound(lhs, rhs, op);
+                const int32_t lhs = a.element(lane);
+                const int32_t rhs = b.element(lane);
+                const int32_t expected_binary = apply_fallback_bitwise_binary(lhs, rhs, op);
+                const int32_t expected_compound = apply_fallback_bitwise_compound(lhs, rhs, op);
                 if (binary_result.element(lane) != expected_binary || compound_result.element(lane) != expected_compound) {
                     harness.add_result(
                         test_name,
@@ -378,8 +383,8 @@ bool run_uint32_bitwise_test_for_type(const std::string& type_name, CpuInformati
         }
         alignas(SimdType) SimdType result = ~a;
         for (int lane = 0; lane < lanes; ++lane) {
-            const uint32_t lhs = a.element(lane);
-            const uint32_t expected = (~FallbackUInt32(lhs)).v;
+            const int32_t lhs = a.element(lane);
+            const int32_t expected = (~FallbackInt32(lhs)).v;
             if (result.element(lane) != expected) {
                 harness.add_result(test_name, false, "not mismatch, lane " + std::to_string(lane));
                 return false;
@@ -392,31 +397,36 @@ bool run_uint32_bitwise_test_for_type(const std::string& type_name, CpuInformati
 }
 
 template <typename SimdType>
-bool run_uint32_shift_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
-    const std::string test_name = type_name + " UInt32 shifts";
+bool run_int32_shift_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Int32 shifts";
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
     constexpr int shift_counts[] = {0, 1, 2, 7, 15, 30, 31};
-    constexpr int rotate_counts[] = {0, 1, 3, 7, 13, 31, 32, 33, -1, -33};
     std::mt19937 rng(20260224u);
-    std::uniform_int_distribution<uint32_t> dist(0u, std::numeric_limits<uint32_t>::max());
+    std::uniform_int_distribution<int32_t> right_dist(std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
 
     for (const int shift : shift_counts) {
+        const int32_t max_left = (shift == 0) ? std::numeric_limits<int32_t>::max() : (std::numeric_limits<int32_t>::max() >> shift);
+        std::uniform_int_distribution<int32_t> left_dist(0, max_left);
+
         for (int iteration = 0; iteration < 500; ++iteration) {
-            alignas(SimdType) SimdType values{};
+            alignas(SimdType) SimdType left_values{};
+            alignas(SimdType) SimdType right_values{};
             for (int lane = 0; lane < lanes; ++lane) {
-                values.set_element(lane, dist(rng));
+                left_values.set_element(lane, left_dist(rng));
+                right_values.set_element(lane, right_dist(rng));
             }
 
-            alignas(SimdType) SimdType left_result = values << shift;
-            alignas(SimdType) SimdType right_result = values >> shift;
+            alignas(SimdType) SimdType left_result = left_values << shift;
+            alignas(SimdType) SimdType right_result = right_values >> shift;
             for (int lane = 0; lane < lanes; ++lane) {
-                const uint32_t v = values.element(lane);
-                const uint32_t expected_left = (FallbackUInt32(v) << shift).v;
-                const uint32_t expected_right = (FallbackUInt32(v) >> shift).v;
+                const int32_t lhs = left_values.element(lane);
+                const int32_t rhs = right_values.element(lane);
+                const int32_t expected_left = (FallbackInt32(lhs) << shift).v;
+                const int32_t expected_right = (FallbackInt32(rhs) >> shift).v;
                 if (left_result.element(lane) != expected_left) {
                     harness.add_result(test_name, false, "left shift mismatch, shift=" + std::to_string(shift) + ", lane " + std::to_string(lane));
                     return false;
@@ -429,62 +439,43 @@ bool run_uint32_shift_test_for_type(const std::string& type_name, CpuInformation
         }
     }
 
-    for (const int bits : rotate_counts) {
-        for (int iteration = 0; iteration < 500; ++iteration) {
-            alignas(SimdType) SimdType values{};
-            for (int lane = 0; lane < lanes; ++lane) {
-                values.set_element(lane, dist(rng));
-            }
-
-            alignas(SimdType) SimdType left_rot = rotl(values, bits);
-            alignas(SimdType) SimdType right_rot = rotr(values, bits);
-            for (int lane = 0; lane < lanes; ++lane) {
-                const uint32_t v = values.element(lane);
-                const uint32_t expected_l = rotl(FallbackUInt32(v), bits).v;
-                const uint32_t expected_r = rotr(FallbackUInt32(v), bits).v;
-                if (left_rot.element(lane) != expected_l) {
-                    harness.add_result(test_name, false, "rotl mismatch, bits=" + std::to_string(bits) + ", lane " + std::to_string(lane));
-                    return false;
-                }
-                if (right_rot.element(lane) != expected_r) {
-                    harness.add_result(test_name, false, "rotr mismatch, bits=" + std::to_string(bits) + ", lane " + std::to_string(lane));
-                    return false;
-                }
-            }
-        }
-    }
-
-    harness.add_result(test_name, true, "<< >> rotl rotr matched fallback");
+    harness.add_result(test_name, true, "<< and >> matched fallback");
     return true;
 }
 
 template <typename SimdType>
-bool run_uint32_minmax_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
-    const std::string test_name = type_name + " UInt32 min/max";
+bool run_int32_minmax_abs_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Int32 min/max/abs";
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
     std::mt19937 rng(20260224u);
-    std::uniform_int_distribution<uint32_t> dist(0u, std::numeric_limits<uint32_t>::max());
+    std::uniform_int_distribution<int32_t> dist(std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+    std::uniform_int_distribution<int32_t> abs_dist(std::numeric_limits<int32_t>::min() + 1, std::numeric_limits<int32_t>::max());
 
     for (int iteration = 0; iteration < 800; ++iteration) {
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
+        alignas(SimdType) SimdType abs_input{};
         for (int lane = 0; lane < lanes; ++lane) {
             a.set_element(lane, dist(rng));
             b.set_element(lane, dist(rng));
+            abs_input.set_element(lane, abs_dist(rng));
         }
 
         alignas(SimdType) SimdType min_result = min(a, b);
         alignas(SimdType) SimdType max_result = max(a, b);
+        alignas(SimdType) SimdType abs_result = abs(abs_input);
 
         for (int lane = 0; lane < lanes; ++lane) {
-            const uint32_t lhs = a.element(lane);
-            const uint32_t rhs = b.element(lane);
-            const uint32_t expected_min = min(FallbackUInt32(lhs), FallbackUInt32(rhs)).v;
-            const uint32_t expected_max = max(FallbackUInt32(lhs), FallbackUInt32(rhs)).v;
+            const int32_t lhs = a.element(lane);
+            const int32_t rhs = b.element(lane);
+            const int32_t abs_val = abs_input.element(lane);
+            const int32_t expected_min = min(FallbackInt32(lhs), FallbackInt32(rhs)).v;
+            const int32_t expected_max = max(FallbackInt32(lhs), FallbackInt32(rhs)).v;
+            const int32_t expected_abs = abs(FallbackInt32(abs_val)).v;
             if (min_result.element(lane) != expected_min) {
                 harness.add_result(test_name, false, "min mismatch, lane " + std::to_string(lane));
                 return false;
@@ -493,76 +484,106 @@ bool run_uint32_minmax_test_for_type(const std::string& type_name, CpuInformatio
                 harness.add_result(test_name, false, "max mismatch, lane " + std::to_string(lane));
                 return false;
             }
+            if (abs_result.element(lane) != expected_abs) {
+                harness.add_result(test_name, false, "abs mismatch, lane " + std::to_string(lane));
+                return false;
+            }
         }
     }
 
-    const uint32_t edges[] = {
-        0u,
-        1u,
-        std::numeric_limits<uint32_t>::max(),
-        0x80000000u,
-        0x7FFFFFFFu,
-        0x55555555u,
-        0xAAAAAAAAu,
-        123456789u,
-        4000000000u
+    const int32_t edges[] = {
+        0,
+        1,
+        -1,
+        std::numeric_limits<int32_t>::max(),
+        std::numeric_limits<int32_t>::min(),
+        std::numeric_limits<int32_t>::max() - 1,
+        std::numeric_limits<int32_t>::min() + 1,
+        123456789,
+        -123456789
     };
     constexpr int edge_count = static_cast<int>(sizeof(edges) / sizeof(edges[0]));
 
     for (int base = 0; base < edge_count; ++base) {
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
+        alignas(SimdType) SimdType abs_input{};
         for (int lane = 0; lane < lanes; ++lane) {
             a.set_element(lane, edges[(base + lane) % edge_count]);
             b.set_element(lane, edges[(base * 5 + lane + 1) % edge_count]);
+            int32_t abs_lane = edges[(base * 3 + lane + 2) % edge_count];
+            if (abs_lane == std::numeric_limits<int32_t>::min()) {
+                abs_lane = std::numeric_limits<int32_t>::min() + 1;
+            }
+            abs_input.set_element(lane, abs_lane);
         }
 
         alignas(SimdType) SimdType min_result = min(a, b);
         alignas(SimdType) SimdType max_result = max(a, b);
+        alignas(SimdType) SimdType abs_result = abs(abs_input);
+
         for (int lane = 0; lane < lanes; ++lane) {
-            const uint32_t lhs = a.element(lane);
-            const uint32_t rhs = b.element(lane);
-            const uint32_t expected_min = min(FallbackUInt32(lhs), FallbackUInt32(rhs)).v;
-            const uint32_t expected_max = max(FallbackUInt32(lhs), FallbackUInt32(rhs)).v;
-            if (min_result.element(lane) != expected_min || max_result.element(lane) != expected_max) {
+            const int32_t lhs = a.element(lane);
+            const int32_t rhs = b.element(lane);
+            const int32_t abs_val = abs_input.element(lane);
+            const int32_t expected_min = min(FallbackInt32(lhs), FallbackInt32(rhs)).v;
+            const int32_t expected_max = max(FallbackInt32(lhs), FallbackInt32(rhs)).v;
+            const int32_t expected_abs = abs(FallbackInt32(abs_val)).v;
+            if (min_result.element(lane) != expected_min || max_result.element(lane) != expected_max || abs_result.element(lane) != expected_abs) {
                 harness.add_result(test_name, false, "edge mismatch, lane " + std::to_string(lane));
                 return false;
             }
         }
     }
 
-    harness.add_result(test_name, true, "min/max matched fallback");
+    // abs(INT_MIN) is well-defined for vector int32 paths in this library:
+    // result remains INT_MIN in two's-complement arithmetic.
+    if constexpr (SimdType::number_of_elements() > 1) {
+        alignas(SimdType) SimdType abs_input{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            abs_input.set_element(lane, std::numeric_limits<int32_t>::min());
+        }
+        alignas(SimdType) SimdType abs_result = abs(abs_input);
+        for (int lane = 0; lane < lanes; ++lane) {
+            if (abs_result.element(lane) != std::numeric_limits<int32_t>::min()) {
+                harness.add_result(test_name, false, "abs(INT_MIN) mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+    }
+
+    harness.add_result(test_name, true, "min/max/abs matched fallback");
     return true;
 }
 
 template <typename SimdType>
-bool run_uint32_compare_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
-    const std::string test_name = type_name + " UInt32 compare/blend";
+bool run_int32_compare_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Int32 compare/blend";
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
     constexpr int lanes = SimdType::number_of_elements();
     std::mt19937 rng(20260224u);
-    std::uniform_int_distribution<uint32_t> dist(0u, std::numeric_limits<uint32_t>::max());
+    std::uniform_int_distribution<int32_t> dist(std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
 
     for (int iteration = 0; iteration < 800; ++iteration) {
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
         alignas(SimdType) SimdType if_true{};
         alignas(SimdType) SimdType if_false{};
-        alignas(SimdType) SimdType zero(0u);
-        alignas(SimdType) SimdType ones(std::numeric_limits<uint32_t>::max());
+        alignas(SimdType) SimdType zero(0);
+        alignas(SimdType) SimdType ones(-1);
         alignas(SimdType) SimdType b_diff{};
 
         for (int lane = 0; lane < lanes; ++lane) {
-            const uint32_t av = dist(rng);
-            const uint32_t bv = dist(rng);
+            const int32_t av = dist(rng);
+            const int32_t bv = dist(rng);
             a.set_element(lane, av);
             b.set_element(lane, bv);
             if_true.set_element(lane, dist(rng));
             if_false.set_element(lane, dist(rng));
-            b_diff.set_element(lane, av ^ 1u);
+            b_diff.set_element(lane, av ^ 1);
         }
 
         const auto mask_eq = compare_equal(a, b);
@@ -584,26 +605,25 @@ bool run_uint32_compare_test_for_type(const std::string& type_name, CpuInformati
         const SimdType if_ge = if_greater_equal(a, b, if_true, if_false);
 
         for (int lane = 0; lane < lanes; ++lane) {
-            const FallbackUInt32 fa(a.element(lane));
-            const FallbackUInt32 fb(b.element(lane));
+            const FallbackInt32 fa(a.element(lane));
+            const FallbackInt32 fb(b.element(lane));
             const bool eq = compare_equal(fa, fb);
             const bool lt = compare_less(fa, fb);
             const bool le = compare_less_equal(fa, fb);
             const bool gt = compare_greater(fa, fb);
             const bool ge = compare_greater_equal(fa, fb);
 
-            const uint32_t all_ones = std::numeric_limits<uint32_t>::max();
-            if (blend_eq.element(lane) != (eq ? all_ones : 0u) ||
-                blend_lt.element(lane) != (lt ? all_ones : 0u) ||
-                blend_le.element(lane) != (le ? all_ones : 0u) ||
-                blend_gt.element(lane) != (gt ? all_ones : 0u) ||
-                blend_ge.element(lane) != (ge ? all_ones : 0u)) {
+            if (blend_eq.element(lane) != (eq ? -1 : 0) ||
+                blend_lt.element(lane) != (lt ? -1 : 0) ||
+                blend_le.element(lane) != (le ? -1 : 0) ||
+                blend_gt.element(lane) != (gt ? -1 : 0) ||
+                blend_ge.element(lane) != (ge ? -1 : 0)) {
                 harness.add_result(test_name, false, "blend(compare) mismatch, lane " + std::to_string(lane));
                 return false;
             }
 
-            const uint32_t t = if_true.element(lane);
-            const uint32_t f = if_false.element(lane);
+            const int32_t t = if_true.element(lane);
+            const int32_t f = if_false.element(lane);
             if (if_eq.element(lane) != (eq ? t : f) ||
                 if_lt.element(lane) != (lt ? t : f) ||
                 if_le.element(lane) != (le ? t : f) ||
@@ -631,29 +651,29 @@ bool run_uint32_compare_test_for_type(const std::string& type_name, CpuInformati
 }
 
 template <typename SimdType>
-bool run_uint32_metadata_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
-    const std::string test_name = type_name + " UInt32 metadata";
+bool run_int32_metadata_test_for_type(const std::string& type_name, CpuInformation cpu, TestHarness& harness) {
+    const std::string test_name = type_name + " Int32 metadata";
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
     }
 
-    if (SimdType::size_of_element() != static_cast<int>(sizeof(uint32_t))) {
+    if (SimdType::size_of_element() != static_cast<int>(sizeof(int32_t))) {
         harness.add_result(test_name, false, "size_of_element() mismatch");
         return false;
     }
 
-    const SimdType sequential = SimdType::make_sequential(17u);
+    const SimdType sequential = SimdType::make_sequential(-19);
     for (int lane = 0; lane < SimdType::number_of_elements(); ++lane) {
-        const uint32_t expected = 17u + static_cast<uint32_t>(lane);
+        const int32_t expected = -19 + lane;
         if (sequential.element(lane) != expected) {
             harness.add_result(test_name, false, "make_sequential mismatch, lane " + std::to_string(lane));
             return false;
         }
     }
 
-    const SimdType set_value = SimdType::make_set1(29u);
+    const SimdType set_value = SimdType::make_set1(23);
     for (int lane = 0; lane < SimdType::number_of_elements(); ++lane) {
-        if (set_value.element(lane) != 29u) {
+        if (set_value.element(lane) != 23) {
             harness.add_result(test_name, false, "make_set1 mismatch, lane " + std::to_string(lane));
             return false;
         }
@@ -664,13 +684,13 @@ bool run_uint32_metadata_test_for_type(const std::string& type_name, CpuInformat
 }
 
 template <typename SimdType>
-bool run_uint32_binary_test_for_type(
+bool run_int32_binary_test_for_type(
     const std::string& type_name,
     const std::string& op_name,
     ArithmeticOp op,
     CpuInformation cpu,
     TestHarness& harness) {
-    const std::string test_name = type_name + " UInt32 " + op_name;
+    const std::string test_name = type_name + " Int32 " + op_name;
 
     if (!SimdType::cpu_supported(cpu) || !SimdType::compiler_supported()) {
         return true;
@@ -678,31 +698,40 @@ bool run_uint32_binary_test_for_type(
 
     constexpr int lanes = SimdType::number_of_elements();
     std::mt19937 rng(20260224u);
-    std::uniform_int_distribution<uint32_t> dist(0u, std::numeric_limits<uint32_t>::max());
+    std::uniform_int_distribution<int32_t> add_sub_dist(-1000000, 1000000);
+    std::uniform_int_distribution<int32_t> mul_dist(-30000, 30000);
+    std::uniform_int_distribution<int32_t> div_dist(-1000000, 1000000);
 
     for (int iteration = 0; iteration < 1200; ++iteration) {
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
 
         for (int lane = 0; lane < lanes; ++lane) {
-            const uint32_t lhs = dist(rng);
-            uint32_t rhs = dist(rng);
-            if (op == ArithmeticOp::div) {
-                rhs = sanitize_divisor(rhs);
+            int32_t lhs = 0;
+            int32_t rhs = 1;
+            if (op == ArithmeticOp::mul) {
+                lhs = mul_dist(rng);
+                rhs = mul_dist(rng);
+            } else if (op == ArithmeticOp::div) {
+                lhs = div_dist(rng);
+                rhs = sanitize_divisor(lhs, div_dist(rng));
+            } else {
+                lhs = add_sub_dist(rng);
+                rhs = add_sub_dist(rng);
             }
             a.set_element(lane, lhs);
             b.set_element(lane, rhs);
         }
 
         for (const ArithmeticPath path : kArithmeticPaths) {
-            const uint32_t scalar = scalar_for_op(op);
+            const int32_t scalar = scalar_for_op(op);
             alignas(SimdType) SimdType result{};
             apply_simd_op_with_path(a, b, scalar, op, path, result);
             for (int lane = 0; lane < lanes; ++lane) {
-                const uint32_t lhs = a.element(lane);
-                const uint32_t rhs = b.element(lane);
-                const uint32_t expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
-                const uint32_t actual = result.element(lane);
+                const int32_t lhs = a.element(lane);
+                const int32_t rhs = b.element(lane);
+                const int32_t expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
+                const int32_t actual = result.element(lane);
                 if (actual != expected) {
                     harness.add_result(
                         test_name,
@@ -714,29 +743,29 @@ bool run_uint32_binary_test_for_type(
         }
     }
 
-    const U32Pair* pairs = edge_pairs_for_op(op);
+    const I32Pair* pairs = edge_pairs_for_op(op);
     for (int base = 0; base < edge_pair_count(); ++base) {
         alignas(SimdType) SimdType a{};
         alignas(SimdType) SimdType b{};
         for (int lane = 0; lane < lanes; ++lane) {
-            const U32Pair pair = pairs[(base + lane) % edge_pair_count()];
-            uint32_t rhs = pair.rhs;
+            const I32Pair pair = pairs[(base + lane) % edge_pair_count()];
+            int32_t rhs = pair.rhs;
             if (op == ArithmeticOp::div) {
-                rhs = sanitize_divisor(rhs);
+                rhs = sanitize_divisor(pair.lhs, rhs);
             }
             a.set_element(lane, pair.lhs);
             b.set_element(lane, rhs);
         }
 
         for (const ArithmeticPath path : kArithmeticPaths) {
-            const uint32_t scalar = scalar_for_op(op);
+            const int32_t scalar = scalar_for_op(op);
             alignas(SimdType) SimdType result{};
             apply_simd_op_with_path(a, b, scalar, op, path, result);
             for (int lane = 0; lane < lanes; ++lane) {
-                const uint32_t lhs = a.element(lane);
-                const uint32_t rhs = b.element(lane);
-                const uint32_t expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
-                const uint32_t actual = result.element(lane);
+                const int32_t lhs = a.element(lane);
+                const int32_t rhs = b.element(lane);
+                const int32_t expected = apply_fallback_op_with_path(lhs, rhs, scalar, op, path);
+                const int32_t actual = result.element(lane);
                 if (actual != expected) {
                     harness.add_result(
                         test_name,
@@ -748,42 +777,42 @@ bool run_uint32_binary_test_for_type(
         }
     }
 
-    harness.add_result(test_name, true, "Random + overflow/underflow edge cases matched fallback");
+    harness.add_result(test_name, true, "Random + directed edge cases matched fallback");
     return true;
 }
 
 template <typename SimdType>
-bool run_uint32_suite_for_type(const char* type_name, CpuInformation cpu, TestHarness& harness) {
-    return run_uint32_metadata_test_for_type<SimdType>(type_name, cpu, harness) &&
-           run_uint32_binary_test_for_type<SimdType>(type_name, "addition", ArithmeticOp::add, cpu, harness) &&
-           run_uint32_binary_test_for_type<SimdType>(type_name, "subtraction", ArithmeticOp::sub, cpu, harness) &&
-           run_uint32_binary_test_for_type<SimdType>(type_name, "multiplication", ArithmeticOp::mul, cpu, harness) &&
-           run_uint32_binary_test_for_type<SimdType>(type_name, "division", ArithmeticOp::div, cpu, harness) &&
-           run_uint32_minmax_test_for_type<SimdType>(type_name, cpu, harness) &&
-           run_uint32_compare_test_for_type<SimdType>(type_name, cpu, harness) &&
-           run_uint32_bitwise_test_for_type<SimdType>(type_name, cpu, harness) &&
-           run_uint32_shift_test_for_type<SimdType>(type_name, cpu, harness);
+bool run_int32_suite_for_type(const char* type_name, CpuInformation cpu, TestHarness& harness) {
+    return run_int32_metadata_test_for_type<SimdType>(type_name, cpu, harness) &&
+           run_int32_binary_test_for_type<SimdType>(type_name, "addition", ArithmeticOp::add, cpu, harness) &&
+           run_int32_binary_test_for_type<SimdType>(type_name, "subtraction", ArithmeticOp::sub, cpu, harness) &&
+           run_int32_binary_test_for_type<SimdType>(type_name, "multiplication", ArithmeticOp::mul, cpu, harness) &&
+           run_int32_binary_test_for_type<SimdType>(type_name, "division", ArithmeticOp::div, cpu, harness) &&
+           run_int32_minmax_abs_test_for_type<SimdType>(type_name, cpu, harness) &&
+           run_int32_compare_test_for_type<SimdType>(type_name, cpu, harness) &&
+           run_int32_bitwise_test_for_type<SimdType>(type_name, cpu, harness) &&
+           run_int32_shift_test_for_type<SimdType>(type_name, cpu, harness);
 }
 
 } // namespace
 
-void run_uint32_arithmetic_tests(TestHarness& harness) {
-    std::cout << "\n===== UInt32 Arithmetic Tests =====\n";
+void run_int32_arithmetic_tests(TestHarness& harness) {
+    std::cout << "\n===== Int32 Arithmetic Tests =====\n";
     if (harness.should_halt()) {
         return;
     }
 #if defined(_M_X64) || defined(__x86_64)
     CpuInformation cpu{};
 #define MT_RUN_OR_HALT(expr) do { if (!(expr)) { return; } } while (false)
-    MT_RUN_OR_HALT(run_uint32_suite_for_type<FallbackUInt32>("Fallback", cpu, harness));
-    MT_RUN_OR_HALT(run_uint32_suite_for_type<Simd128UInt32>("Simd128", cpu, harness));
+    MT_RUN_OR_HALT(run_int32_suite_for_type<FallbackInt32>("Fallback", cpu, harness));
+    MT_RUN_OR_HALT(run_int32_suite_for_type<Simd128Int32>("Simd128", cpu, harness));
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
-    MT_RUN_OR_HALT(run_uint32_suite_for_type<Simd256UInt32>("Simd256", cpu, harness));
+    MT_RUN_OR_HALT(run_int32_suite_for_type<Simd256Int32>("Simd256", cpu, harness));
 #endif
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
-    MT_RUN_OR_HALT(run_uint32_suite_for_type<Simd512UInt32>("Simd512", cpu, harness));
+    MT_RUN_OR_HALT(run_int32_suite_for_type<Simd512Int32>("Simd512", cpu, harness));
 #endif
 #undef MT_RUN_OR_HALT
 #endif
-    std::cout << "===================================\n";
+    std::cout << "==================================\n";
 }

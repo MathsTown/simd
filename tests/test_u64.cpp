@@ -17,9 +17,9 @@ Uses FallbackUInt64 as the reference implementation.
 #include <random>
 #include <string_view>
 
-#include "../Include/simd-cpuid.h"
-#include "../Include/simd-concepts.h"
-#include "../Include/simd-uint64.h"
+#include "../include/simd-cpuid.h"
+#include "../include/simd-concepts.h"
+#include "../include/simd-uint64.h"
 
 namespace {
 

@@ -33,26 +33,34 @@ c++20 is required.
 
 This repository is being prepared as a standalone open source library that can be used via git subtree.
 
+Note: Not all compilers support simd math functions (sin, cos, pow) etc.  Safe, but slower fallbacks to the standard library are used in this case.
+
 ### CPU Levels.
 The code targets 4 different CPU levels:
- - Fallback - A fallback for non x86_64, such as wasm.
+ - Fallback - A fallback for non simd or non x86_64/wasm.
  - x86_64 level 1 (SSE2 +) - Covers practically all x86_64 CPUs.  128 bit insructions.
  - x86_64 level 3 (AVX2 +) - CPUs that fully implement 256bit instructions.
  - x86_64 level 4 (AVX-512 +) - CPUs that fully implement 512bit instructions.
-
  - Extra instructions (such as SSE4.1, AVX) are used if detected at compile time.
+
+Now has WebAssembly (wasm) targets via emscripten.
+ - Fallback
+ - Simd128 (with native wasm intrisics).
+
 
 Generally, CPUs are restricted to the lower support level if they only have partial implmentation of an instruction size.  For example, there are some older CPUs that support AVX but not AVX2, these will need to use 128bit instrucitons.
 
-For Windows, the best option is one build per x86-64 level.  Dispatch at download or install time. It is also possible to dispatch to different dynamic library files (.dll) at runtime.  Functions for runtime detection are included.
+### SIMD Dispatch..
 
-For Linux, compile from source.
+For Windows, the best option is one build per x86-64 level.  Dispatch at download or install time. It is also possible to dispatch to different dynamic library files (.dll) at runtime.  Functions for runtime detection are included. Runtime dispatch is supported on MSVC only, but is much slower than compile time dispatch (using 512bit instructions when the compiler is not optimising 512 bit registers is sub-optimal).  
 
-Runtime dispatch is supported on MSVC only, but is much slower than compile time dispatch (using 512bit instructions when the compiler is not optimising 512 bit registers is sub-optimal).  
+For Linux, dispatch at compile time.
+
+For WebAssembly, compile simd and non-simd versions, detect support in Javasctipt then load.
 
 
 ### Types
-- Fallback:
+- Fallback - For any host:
   - FallbackUInt32
   - FallbackInt32
   - FallbackUInt64
@@ -60,7 +68,7 @@ Runtime dispatch is supported on MSVC only, but is much slower than compile time
   - FallbackFloat32
   - FallbackFloat64
 
-- 128 bit (level 1):
+- 128 bit (level 1) - For x86_64 and wasm:
   - Simd128Uint32
   - Simd128Int32
   - Simd128Uint64
@@ -68,7 +76,7 @@ Runtime dispatch is supported on MSVC only, but is much slower than compile time
   - Simd128Float32
   - Simd128Float64
 
-- 256 bit (level 3):
+- 256 bit (level 3) - For x86_64:
   - Simd256Uint32
   - Simd256Int32
   - Simd256Uint64
@@ -76,13 +84,21 @@ Runtime dispatch is supported on MSVC only, but is much slower than compile time
   - Simd256Float32
   - Simd256Float64
 
-- 512 bit (level 4):
+- 512 bit (level 4)- For x86_64:
   - Simd512Uint32
   - Simd512Int32
   - Simd512Uint64
   - Simd512Int64
   - Simd512Float32
   - Simd512Float64
+
+- Native (Alias to widest available type at compile time.  Typedef of above types.)
+  - SimdNativeUint32
+  - SimdNativeInt32
+  - SimdNativeUint64
+  - SimdNativeInt64
+  - SimdNativeFloat32
+  - SimdNativeFloat64
 
 ### Generic Functions
 You can write generic code for any floating point type (f32 or f64) like so:
@@ -230,6 +246,8 @@ Transcendental math operations fully implemented on MSVC by using the SVML libra
 
   GCC disables intrinsics if they are not supported, so types that are not supported will not be exposed when compiling with GCC.
 
+### Emscripten
+  SVML is not available.  Transcendental math operations such as `sin()`, `cos()`, `tan()`, `log()`, and `exp()` use my code, which are currently just slow javascipt fallbacks. 
 
 ## Testing Suite
 If you wish to run tests, these are currently setup to run under PowerShell for Windows.  There are tests for 3 windows compilers: MSVC, gcc and clang (as clang-cl).

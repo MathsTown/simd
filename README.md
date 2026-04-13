@@ -5,22 +5,22 @@ A small header-only SIMD library made for use with Maths Town projects.  I've ma
 ## Adding to your Project
 This repo is designed to be added to your project using the git subtree command.
 
-To add the 1st time (to the 3rd-party folder):
+To add the 1st time (to the external folder):
 ```
 git remote add simd https://github.com/MathsTown/simd.git
 git fetch simd
-git subtree add --prefix=3rd-party/simd simd main --squash
+git subtree add --prefix=external/simd simd main --squash
 ```
 
 To update:
 ```
 git fetch simd
-git subtree pull --prefix=3rd-party/simd simd main --squash
+git subtree pull --prefix=external/simd simd main --squash
 ```
 
 Add this path to your list of includes:
 ```
-3rd-party/simd/include
+external/simd/include
 ```
 
 

@@ -23,6 +23,8 @@ Uses independent scalar/two's-complement reference calculations.
 #include "../include/simd-cpuid.h"
 #include "../include/simd-int64.h"
 
+using namespace mt;
+
 namespace {
 
 enum class ArithmeticOp {
@@ -665,7 +667,7 @@ bool run_int64_compare_test_for_type(const std::string& type_name, CpuInformatio
             return false;
         }
 
-        if constexpr (!std::is_same_v<typename SimdType::MaskType, bool>) {
+        if constexpr (SimdType::number_of_elements() > 1) {
             alignas(SimdType) SimdType partial_a = a;
             alignas(SimdType) SimdType partial_b = a;
             partial_b.set_element(0, partial_a.element(0) ^ 1ll);

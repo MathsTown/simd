@@ -24,6 +24,8 @@ Uses independent scalar/std::bit reference calculations.
 #include "../include/simd-concepts.h"
 #include "../include/simd-uint64.h"
 
+using namespace mt;
+
 namespace {
 
 enum class ArithmeticOp {
@@ -700,7 +702,7 @@ bool run_uint64_compare_test_for_type(const std::string& type_name, CpuInformati
             }
         }
 
-        if constexpr (!std::is_same_v<typename SimdType::MaskType, bool>) {
+        if constexpr (SimdType::number_of_elements() > 1) {
             alignas(SimdType) SimdType partial_a = SimdType::make_set1(0ull);
             alignas(SimdType) SimdType partial_b = SimdType::make_set1(0ull);
             set_lane(partial_b, 0, 1ull);

@@ -36,6 +36,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 * 
 * 
 *************************************************************************************************/
+namespace mt {
+
 template <typename T>
 concept Simd = requires (T t, const T ct, typename T::F lane_value) {
 
@@ -393,6 +395,4 @@ concept SimdFloatToInt = Simd<T> && SimdFloat<T> && requires (T t) {
 
 };
 
-
-
-
+} // namespace mt

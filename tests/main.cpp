@@ -26,6 +26,8 @@ Current scope:
 #include "test_u32.h"
 #include "test_u64.h"
 
+using namespace mt;
+
 void TestHarness::add_result(const std::string& name, bool passed, const std::string& detail) {
     results.push_back(TestResult{name, passed ? TestStatus::pass : TestStatus::fail, detail});
     if (!passed) {

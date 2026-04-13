@@ -25,6 +25,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "environment.h"
 #include <stdint.h>
 
+namespace mt {
+
 inline static bool test_all_false(bool mask) noexcept { return !mask; }
 inline static bool test_all_true(bool mask) noexcept { return mask; }
 
@@ -64,3 +66,5 @@ inline static bool test_all_true(__m128d mask) noexcept { return _mm_movemask_pd
 inline static bool test_all_false(__m256d mask) noexcept { return _mm256_movemask_pd(mask) == 0; }
 inline static bool test_all_true(__m256d mask) noexcept { return _mm256_movemask_pd(mask) == 0xF; }
 #endif
+
+} // namespace mt

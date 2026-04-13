@@ -28,6 +28,8 @@ Uses independent scalar/std:: math as the reference implementation.
 #include "../include/simd-uint64.h"
 #include "../include/simd-f64.h"
 
+using namespace mt;
+
 namespace {
 
 enum class ArithmeticOp {
@@ -1119,7 +1121,7 @@ bool run_float64_compare_test_for_type(const std::string& type_name, CpuInformat
             return false;
         }
 
-        if constexpr (!std::is_same_v<typename SimdType::MaskType, bool>) {
+        if constexpr (SimdType::number_of_elements() > 1) {
             alignas(SimdType) SimdType partial_a = a;
             alignas(SimdType) SimdType partial_b = a;
             partial_b.set_element(0, std::nextafter(partial_a.element(0), std::numeric_limits<double>::infinity()));

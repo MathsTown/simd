@@ -100,13 +100,15 @@ For WebAssembly, compile simd and non-simd versions, detect support in Javasctip
   - SimdNativeFloat32
   - SimdNativeFloat64
 
+All public API symbols are in the `mt` namespace (for example `mt::Simd128Float32`, `mt::SimdNativeFloat64`, and `mt::SimdFloat`).
+
 ### Generic Functions
 You can write generic code for any floating point type (f32 or f64) like so:
 ```
-template <SimdFloat S>
+template <mt::SimdFloat S>
 void my_function(S x, Sy); 
 ```
-SimdFloat is a concept that will accept any of the floating point types above, or any user type that implements the concept.
+`mt::SimdFloat` is a concept that will accept any of the floating point types above, or any user type that implements the concept.
 
 ### Concepts
 Concepts allow you to specify the minimum level of functionality required by your generic function.

@@ -83,6 +83,8 @@ I've included FallbackFloat32 for use with Emscripen, but use SimdNativeFloat32 
 /***************************************************************************************************************************************************************************************************
  * Fallback to a single 32 bit float
  **************************************************************************************************************************************************************************************************/
+namespace mt {
+
 struct FallbackFloat32 {
 	float v;
 
@@ -296,7 +298,7 @@ inline static FallbackFloat32 blend(const FallbackFloat32 if_false, const Fallba
  * This section provides shims and patches for compiler incompatible behaviour.
  * ************************************************************************************************/
 
-namespace mt::simd_detail_f32 {
+namespace simd_detail_f32 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline float lane_get(__m128 v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
@@ -1857,4 +1859,4 @@ static_assert(SimdCompareOps<Simd512Float32>, "Simd512Float32 does not implement
 	typedef FallbackFloat32 SimdNativeFloat32;
 #endif
 
-
+} // namespace mt

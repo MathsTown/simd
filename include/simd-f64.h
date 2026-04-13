@@ -89,6 +89,8 @@ I've included FallbackFloat64 for use with Emscripen, but use SimdNativeFloat64 
  * Fallback 64-Bit Floating Point
  *
  * ************************************************************************************************/
+namespace mt {
+
 struct FallbackFloat64 {
 	double v;
 
@@ -303,7 +305,7 @@ inline static FallbackFloat64 blend(const FallbackFloat64 if_false, const Fallba
  * This section provides shims and patches for compiler incompatible behaviour.
  * ************************************************************************************************/
 
-namespace mt::simd_detail_f64 {
+namespace simd_detail_f64 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline double lane_get(__m128d v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
@@ -1837,4 +1839,4 @@ static_assert(SimdCompareOps<Simd512Float64>, "Simd512Float64 does not implement
 	typedef FallbackFloat64 SimdNativeFloat64;
 #endif
 
-
+} // namespace mt

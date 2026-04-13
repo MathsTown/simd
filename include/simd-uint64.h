@@ -90,6 +90,8 @@ I've included FallbackUInt64 for use with Emscripen, but use SimdNativeUInt64 as
 * as the SIMD types.
 *
 * ************************************************************************************************/
+namespace mt {
+
 struct FallbackUInt64 {
 	uint64_t v;
 	typedef uint64_t F;
@@ -220,7 +222,7 @@ inline static FallbackUInt64 blend(const FallbackUInt64 if_false, const Fallback
  * MSCV intrinsics are sometime a little more feature rich than GCC and Clang.  
  * This section provides shims and patches for compiler incompatible behaviour.
  * ************************************************************************************************/
-namespace mt::simd_detail_u64 {
+namespace simd_detail_u64 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline uint64_t lane_get(__m128i v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
@@ -1104,4 +1106,4 @@ typedef Simd128UInt64 SimdNativeUInt64;
 typedef FallbackUInt64 SimdNativeUInt64;
 #endif
 
-
+} // namespace mt

@@ -48,6 +48,8 @@ Other architectures keep the same class layout, but use compile-time capability 
 #include <intrin.h>
 #include <bitset>
 
+namespace mt {
+
 class CpuInformation {
 private:
 	std::bitset<32> ecx1{}; //ecx from function 1
@@ -244,7 +246,11 @@ public:
 * ************************************************************************************************/
 static const int x86_64_cpu_level = CpuInformation().get_level();
 
+} // namespace mt
+
 #else
+
+namespace mt {
 
 class CpuInformation {
 public:
@@ -300,5 +306,7 @@ public:
 };
 
 static constexpr int x86_64_cpu_level = 0;
+
+} // namespace mt
 
 #endif //x86

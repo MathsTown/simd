@@ -90,6 +90,8 @@ I've included FallbackInt32 for use with Emscripen.
 * as the SIMD types.
 *
 * ************************************************************************************************/
+namespace mt {
+
 struct FallbackInt32 {
 	int32_t v;
 	typedef int32_t F;
@@ -213,7 +215,7 @@ inline static FallbackInt32 blend(const FallbackInt32 if_false, const FallbackIn
  * MSCV intrinsics are sometime a little more feature rich than GCC and Clang.  
  * This section provides shims and patches for compiler incompatible behaviour.
  * ************************************************************************************************/
-namespace mt::simd_detail_i32 {
+namespace simd_detail_i32 {
 	// Portability layer: GCC/Clang cannot index SIMD lanes via MSVC vector members.
 	inline int32_t lane_get(__m128i v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
@@ -1014,5 +1016,4 @@ static_assert(SimdCompareOps<Simd512Int32>, "Simd512Int32 does not implement the
 	typedef FallbackInt32 SimdNativeInt32;
 #endif
 
-
-
+} // namespace mt

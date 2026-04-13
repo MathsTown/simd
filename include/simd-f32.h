@@ -138,7 +138,7 @@ struct FallbackFloat32 {
 	//*****Make Functions****
 	static FallbackFloat32 make_sequential(F first) { return FallbackFloat32(first); }
 	static FallbackFloat32 make_set1(F v) { return FallbackFloat32(v); }
-	static FallbackFloat32 make_from_int32(FallbackUInt32 i) { return FallbackFloat32(static_cast<float>(i.v)); }
+	static FallbackFloat32 make_from_int32(FallbackUInt32 i) { return FallbackFloat32(static_cast<float>(static_cast<int32_t>(i.v))); }
 
 	//*****Cast Functions****
 	FallbackUInt32 bitcast_to_uint() const noexcept { return FallbackUInt32(std::bit_cast<uint32_t>(this->v)); }
@@ -605,7 +605,7 @@ struct Simd512Float32 {
 	static Simd512Float32 make_set1(F v) { return Simd512Float32(_mm512_set1_ps(v)); }
 	
 
-	static Simd512Float32 make_from_int32(Simd512UInt32 i) { return Simd512Float32(_mm512_cvtepu32_ps(i.v)); }
+	static Simd512Float32 make_from_int32(Simd512UInt32 i) { return Simd512Float32(_mm512_cvtepi32_ps(i.v)); }
 
 	//*****Cast Functions****
 
@@ -673,7 +673,14 @@ inline static Simd512Float32 ceil(Simd512Float32 a)  noexcept { return  Simd512F
 [[nodiscard("Value calculated and not used (trunc)")]]
 inline static Simd512Float32 trunc(Simd512Float32 a) noexcept { return  Simd512Float32(_mm512_trunc_ps(a.v)); }
 [[nodiscard("Value calculated and not used (round)")]]
-inline static Simd512Float32 round(Simd512Float32 a) noexcept { return  Simd512Float32(_mm512_roundscale_ps(a.v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC)); }
+inline static Simd512Float32 round(Simd512Float32 a) noexcept {
+	const auto zero = _mm512_setzero_ps();
+	const auto half = _mm512_set1_ps(0.5f);
+	const auto rounded_pos = _mm512_floor_ps(_mm512_add_ps(a.v, half));
+	const auto rounded_neg = _mm512_ceil_ps(_mm512_sub_ps(a.v, half));
+	const auto non_negative_mask = _mm512_cmp_ps_mask(a.v, zero, _CMP_GE_OQ);
+	return Simd512Float32(_mm512_mask_blend_ps(non_negative_mask, rounded_neg, rounded_pos));
+}
 [[nodiscard("Value calculated and not used (fract)")]]
 inline static Simd512Float32 fract(Simd512Float32 a) noexcept { return a - floor(a); }
 
@@ -983,7 +990,14 @@ inline static Simd256Float32 ceil(Simd256Float32 a) noexcept { return Simd256Flo
 inline static Simd256Float32 trunc(Simd256Float32 a) noexcept {return Simd256Float32(_mm256_trunc_ps(a.v));}
 
 [[nodiscard("Value calculated and not used (round)")]]
-inline static Simd256Float32 round(Simd256Float32 a) noexcept {return Simd256Float32(_mm256_round_ps(a.v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC)); }
+inline static Simd256Float32 round(Simd256Float32 a) noexcept {
+	const auto zero = _mm256_setzero_ps();
+	const auto half = _mm256_set1_ps(0.5f);
+	const auto rounded_pos = _mm256_floor_ps(_mm256_add_ps(a.v, half));
+	const auto rounded_neg = _mm256_ceil_ps(_mm256_sub_ps(a.v, half));
+	const auto non_negative_mask = _mm256_cmp_ps(a.v, zero, _CMP_GE_OQ);
+	return Simd256Float32(_mm256_blendv_ps(rounded_neg, rounded_pos, non_negative_mask));
+}
 
 [[nodiscard("Value calculated and not used (fract)")]]
 inline static Simd256Float32 fract(Simd256Float32 a) noexcept {return a - floor(a);}
@@ -1282,7 +1296,12 @@ inline static Simd128Float32 trunc(Simd128Float32 a) noexcept {
 [[nodiscard("Value calculated and not used (round)")]]
 inline static Simd128Float32 round(Simd128Float32 a) noexcept {
 	if constexpr (mt::environment::compiler_has_sse4_1) {
-		return Simd128Float32(_mm_round_ps(a.v, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC)); //SSE4.1
+		const auto zero = _mm_setzero_ps();
+		const auto half = _mm_set1_ps(0.5f);
+		const auto rounded_pos = _mm_floor_ps(_mm_add_ps(a.v, half));
+		const auto rounded_neg = _mm_ceil_ps(_mm_sub_ps(a.v, half));
+		const auto non_negative_mask = _mm_cmpge_ps(a.v, zero);
+		return Simd128Float32(_mm_blendv_ps(rounded_neg, rounded_pos, non_negative_mask)); //SSE4.1
 	}
 	else {
 		return Simd128Float32(_mm_set_ps(std::round(a.element(3)), std::round(a.element(2)), std::round(a.element(1)), std::round(a.element(0))));

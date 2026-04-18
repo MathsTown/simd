@@ -154,6 +154,10 @@ SimdCompareOps - SIMD type with compare/blend operations
  - branchless select helpers (`if_equal`, `if_less`, `if_less_equal`, `if_greater`, `if_greater_equal`)
  - masked blend (`blend(a, b, mask)`)
 
+Shared compare helpers:
+ - `simd-common.h` provides shared `compare_*`, `blend`, `if_*`, and floating-point `if_nan`
+ - raw `float` and `double` can use the same branchless helper API as SIMD/fallback types
+
 SimdInteger - Integer SIMD type (signed or unsigned)
  - everything in `Simd`
  - scalar arithmetic overloads (`simd op scalar`, `scalar op simd`, compound scalar assignments)

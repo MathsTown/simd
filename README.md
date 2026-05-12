@@ -252,6 +252,8 @@ Transcendental math operations fully implemented on MSVC by using the SVML libra
 
   GCC disables intrinsics if they are not supported, so types that are not supported will not be exposed when compiling with GCC.
 
+  On Windows with GCC use options: "-Wa,-muse-unaligned-vector-move" as GCC can emit aligned loads on unaligned data. See [GCC bug 54412](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=54412).
+
 ### Emscripten
   SVML is not available.  Transcendental math operations such as `sin()`, `cos()`, `tan()`, `log()`, and `exp()` use my code, which are currently just slow javascipt fallbacks. 
 

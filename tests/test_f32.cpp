@@ -884,6 +884,7 @@ bool run_float32_helper_test_for_type(const std::string& type_name, CpuInformati
         return true;
     }
 
+    using IntType = typename SimdType::I;
     constexpr int lanes = SimdType::number_of_elements();
     if (SimdType::size_of_element() != static_cast<int>(sizeof(float))) {
         harness.add_result(test_name, false, "size_of_element() mismatch");
@@ -970,6 +971,65 @@ bool run_float32_helper_test_for_type(const std::string& type_name, CpuInformati
             const uint32_t expected = bit_patterns[lane % static_cast<int>(sizeof(bit_patterns) / sizeof(bit_patterns[0]))];
             if (bits.element(lane) != expected) {
                 harness.add_result(test_name, false, "bitcast_to_uint mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+    }
+
+    {
+        alignas(64) float source[96]{};
+        for (int i = 0; i < static_cast<int>(sizeof(source) / sizeof(source[0])); ++i) {
+            source[i] = static_cast<float>(i) * 1.25f - 50.0f;
+        }
+
+        constexpr int base_element = 40;
+        constexpr int gather_indices[] = {
+            3, -1, 7, -4, 0, 3, 11, -8,
+            5, 2, -2, 9, -6, 1, 4, -3
+        };
+        alignas(IntType) IntType byte_offsets{};
+        alignas(IntType) IntType element_indices{};
+        alignas(SimdType) SimdType if_false{};
+        alignas(SimdType) SimdType mask_lhs{};
+        alignas(SimdType) SimdType mask_rhs{};
+
+        for (int lane = 0; lane < lanes; ++lane) {
+            const int index = gather_indices[lane % static_cast<int>(sizeof(gather_indices) / sizeof(gather_indices[0]))];
+            byte_offsets.set_element(lane, static_cast<int32_t>(index * static_cast<int>(sizeof(float))));
+            element_indices.set_element(lane, static_cast<int32_t>(index));
+            if_false.set_element(lane, -1000.0f - static_cast<float>(lane));
+            mask_lhs.set_element(lane, (lane % 2 == 0) ? 1.0f : 0.0f);
+            mask_rhs.set_element(lane, 1.0f);
+        }
+
+        const float* base = source + base_element;
+        const SimdType gathered_byte_offsets = SimdType::make_gather(base, byte_offsets);
+        const SimdType gathered_scaled_indices = SimdType::template make_gather<4>(base, element_indices);
+        const auto alternating_mask = compare_equal(mask_lhs, mask_rhs);
+        const auto all_false_mask = compare_equal(mask_lhs, SimdType(-1.0f));
+        const SimdType masked = SimdType::template make_mask_gather<4>(base, element_indices, if_false, alternating_mask);
+        const SimdType all_false_masked = SimdType::template make_mask_gather<4>(base, element_indices, if_false, all_false_mask);
+
+        for (int lane = 0; lane < lanes; ++lane) {
+            const int index = gather_indices[lane % static_cast<int>(sizeof(gather_indices) / sizeof(gather_indices[0]))];
+            const float expected = source[base_element + index];
+            if (!float_matches_exact(gathered_byte_offsets.element(lane), expected)) {
+                harness.add_result(test_name, false, "make_gather byte-offset mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+            if (!float_matches_exact(gathered_scaled_indices.element(lane), expected)) {
+                harness.add_result(test_name, false, "make_gather scaled-index mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+
+            const bool lane_active = (lane % 2 == 0);
+            const float masked_expected = lane_active ? expected : if_false.element(lane);
+            if (!float_matches_exact(masked.element(lane), masked_expected)) {
+                harness.add_result(test_name, false, "make_mask_gather alternating-mask mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+            if (!float_matches_exact(all_false_masked.element(lane), if_false.element(lane))) {
+                harness.add_result(test_name, false, "make_mask_gather false-mask mismatch, lane " + std::to_string(lane));
                 return false;
             }
         }

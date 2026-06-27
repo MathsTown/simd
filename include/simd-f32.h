@@ -69,6 +69,8 @@ I've included FallbackFloat32 for use with Emscripen, but use SimdNativeFloat32 
 *********************************************************************************************************/
 
 
+#include <bit>
+#include <cstdint>
 #include <cmath>
 #include <cstring>
 
@@ -77,6 +79,7 @@ I've included FallbackFloat32 for use with Emscripen, but use SimdNativeFloat32 
 #include "simd-concepts.h"
 #include "simd-common.h"
 #include "simd-mask.h"
+#include "simd-int32.h"
 #include "simd-uint32.h"
 #include "simd-uint64.h"
 #include "simd-wasm-helpers.h"
@@ -86,10 +89,24 @@ I've included FallbackFloat32 for use with Emscripen, but use SimdNativeFloat32 
  **************************************************************************************************************************************************************************************************/
 namespace mt {
 
+namespace simd_detail_f32 {
+	// x86 gather semantics: address = base byte address + signed_index * Scale.
+	template <int Scale>
+	inline float gather_load(const float* base, int32_t index) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		const auto byte_offset = static_cast<int64_t>(index) * static_cast<int64_t>(Scale);
+		const auto address = reinterpret_cast<std::uintptr_t>(base) + static_cast<std::uintptr_t>(byte_offset);
+		float value;
+		std::memcpy(&value, reinterpret_cast<const void*>(address), sizeof(value));
+		return value;
+	}
+}
+
 struct FallbackFloat32 {
 	float v;
 
 	typedef float F;
+	typedef FallbackInt32 I;
 	typedef FallbackUInt32 U;
 	typedef FallbackUInt64 U64;
 	typedef bool MaskType;
@@ -140,6 +157,16 @@ struct FallbackFloat32 {
 	static FallbackFloat32 make_sequential(F first) { return FallbackFloat32(first); }
 	static FallbackFloat32 make_set1(F v) { return FallbackFloat32(v); }
 	static FallbackFloat32 make_from_int32(FallbackUInt32 i) { return FallbackFloat32(static_cast<float>(static_cast<int32_t>(i.v))); }
+	template <int Scale = 1>
+	static FallbackFloat32 make_gather(const float* base, FallbackInt32 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return FallbackFloat32(simd_detail_f32::gather_load<Scale>(base, indices.v));
+	}
+	template <int Scale = 1>
+	static FallbackFloat32 make_mask_gather(const float* base, FallbackInt32 indices, FallbackFloat32 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return mask ? make_gather<Scale>(base, indices) : if_false;
+	}
 
 	//*****Cast Functions****
 	FallbackUInt32 bitcast_to_uint() const noexcept { return FallbackUInt32(std::bit_cast<uint32_t>(this->v)); }
@@ -322,6 +349,9 @@ namespace simd_detail_f32 {
 		return _mm_loadu_ps(lanes);
 #endif
 	}
+	inline bool mask_lane_active(__m128 mask, int i) noexcept {
+		return (std::bit_cast<uint32_t>(lane_get(mask, i)) & 0x80000000u) != 0;
+	}
 	inline float lane_get(const __m256& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m256_f32[i];
@@ -340,6 +370,9 @@ namespace simd_detail_f32 {
 		lanes[i] = value;
 		v = _mm256_loadu_ps(lanes);
 #endif
+	}
+	inline bool mask_lane_active(const __m256& mask, int i) noexcept {
+		return (std::bit_cast<uint32_t>(lane_get(mask, i)) & 0x80000000u) != 0;
 	}
 	inline float lane_get(const __m512& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
@@ -551,6 +584,7 @@ struct Simd512Float32 {
 
 	typedef float F;
 	typedef __mmask16 MaskType;
+	typedef Simd512Int32 I;
 	typedef Simd512UInt32 U;
 	
 
@@ -609,6 +643,16 @@ struct Simd512Float32 {
 	
 
 	static Simd512Float32 make_from_int32(Simd512UInt32 i) { return Simd512Float32(_mm512_cvtepi32_ps(i.v)); }
+	template <int Scale = 1>
+	static Simd512Float32 make_gather(const float* base, Simd512Int32 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd512Float32(_mm512_i32gather_ps(indices.v, base, Scale));
+	}
+	template <int Scale = 1>
+	static Simd512Float32 make_mask_gather(const float* base, Simd512Int32 indices, Simd512Float32 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd512Float32(_mm512_mask_i32gather_ps(if_false.v, mask, indices.v, base, Scale));
+	}
 
 	//*****Cast Functions****
 
@@ -858,6 +902,7 @@ struct Simd256Float32 {
 	__m256 v;
 	typedef float F;
 	typedef __m256 MaskType;
+	typedef Simd256Int32 I;
 	typedef Simd256UInt32 U;
 	typedef Simd256UInt64 U64;
 
@@ -917,6 +962,16 @@ struct Simd256Float32 {
 	
 
 	static Simd256Float32 make_from_int32(Simd256UInt32 i) {return Simd256Float32(_mm256_cvtepi32_ps(i.v));}
+	template <int Scale = 1>
+	static Simd256Float32 make_gather(const float* base, Simd256Int32 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd256Float32(_mm256_i32gather_ps(base, indices.v, Scale));
+	}
+	template <int Scale = 1>
+	static Simd256Float32 make_mask_gather(const float* base, Simd256Int32 indices, Simd256Float32 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd256Float32(_mm256_mask_i32gather_ps(if_false.v, base, indices.v, mask, Scale));
+	}
 
 	//*****Cast Functions****
 	
@@ -1165,6 +1220,7 @@ struct Simd128Float32 {
 	__m128 v;
 	typedef float F;
 	typedef __m128 MaskType;
+	typedef Simd128Int32 I;
 	typedef Simd128UInt32 U;
 	typedef Simd128UInt64 U64;
 
@@ -1224,6 +1280,24 @@ struct Simd128Float32 {
 
 
 	static Simd128Float32 make_from_int32(Simd128UInt32 i) { return Simd128Float32(_mm_cvtepi32_ps(i.v)); } //SSE2
+	template <int Scale = 1>
+	static Simd128Float32 make_gather(const float* base, Simd128Int32 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Float32(_mm_set_ps(
+			simd_detail_f32::gather_load<Scale>(base, indices.element(3)),
+			simd_detail_f32::gather_load<Scale>(base, indices.element(2)),
+			simd_detail_f32::gather_load<Scale>(base, indices.element(1)),
+			simd_detail_f32::gather_load<Scale>(base, indices.element(0))));
+	}
+	template <int Scale = 1>
+	static Simd128Float32 make_mask_gather(const float* base, Simd128Int32 indices, Simd128Float32 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Float32(_mm_set_ps(
+			simd_detail_f32::mask_lane_active(mask, 3) ? simd_detail_f32::gather_load<Scale>(base, indices.element(3)) : if_false.element(3),
+			simd_detail_f32::mask_lane_active(mask, 2) ? simd_detail_f32::gather_load<Scale>(base, indices.element(2)) : if_false.element(2),
+			simd_detail_f32::mask_lane_active(mask, 1) ? simd_detail_f32::gather_load<Scale>(base, indices.element(1)) : if_false.element(1),
+			simd_detail_f32::mask_lane_active(mask, 0) ? simd_detail_f32::gather_load<Scale>(base, indices.element(0)) : if_false.element(0)));
+	}
 
 	//*****Cast Functions****
 	Simd128UInt32 bitcast_to_uint() const { return Simd128UInt32(_mm_castps_si128(this->v)); } //SSE2
@@ -1545,6 +1619,7 @@ struct Simd128Float32 {
 
 	typedef float F;
 	typedef v128_t MaskType;
+	typedef Simd128Int32 I;
 	typedef Simd128UInt32 U;
 	typedef Simd128UInt64 U64;
 
@@ -1582,6 +1657,26 @@ struct Simd128Float32 {
 	static Simd128Float32 make_sequential(F first) { return Simd128Float32(mt::simd_wasm_detail::make_sequential<float, 4>(first)); }
 	static Simd128Float32 make_set1(F value) { return Simd128Float32(mt::simd_wasm_detail::splat<float>(value)); }
 	static Simd128Float32 make_from_int32(Simd128UInt32 i) { return Simd128Float32(wasm_f32x4_convert_i32x4(i.v)); }
+	template <int Scale = 1>
+	static Simd128Float32 make_gather(const float* base, Simd128Int32 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Float32(mt::simd_wasm_detail::from_array<float, 4>({
+			simd_detail_f32::gather_load<Scale>(base, indices.element(0)),
+			simd_detail_f32::gather_load<Scale>(base, indices.element(1)),
+			simd_detail_f32::gather_load<Scale>(base, indices.element(2)),
+			simd_detail_f32::gather_load<Scale>(base, indices.element(3))
+		}));
+	}
+	template <int Scale = 1>
+	static Simd128Float32 make_mask_gather(const float* base, Simd128Int32 indices, Simd128Float32 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Float32(mt::simd_wasm_detail::from_array<float, 4>({
+			(mt::simd_wasm_detail::lane_get<uint32_t, 4>(mask, 0) & 0x80000000u) ? simd_detail_f32::gather_load<Scale>(base, indices.element(0)) : if_false.element(0),
+			(mt::simd_wasm_detail::lane_get<uint32_t, 4>(mask, 1) & 0x80000000u) ? simd_detail_f32::gather_load<Scale>(base, indices.element(1)) : if_false.element(1),
+			(mt::simd_wasm_detail::lane_get<uint32_t, 4>(mask, 2) & 0x80000000u) ? simd_detail_f32::gather_load<Scale>(base, indices.element(2)) : if_false.element(2),
+			(mt::simd_wasm_detail::lane_get<uint32_t, 4>(mask, 3) & 0x80000000u) ? simd_detail_f32::gather_load<Scale>(base, indices.element(3)) : if_false.element(3)
+		}));
+	}
 
 	Simd128UInt32 bitcast_to_uint() const { return Simd128UInt32(v); }
 };

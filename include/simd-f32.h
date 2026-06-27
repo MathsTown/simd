@@ -170,6 +170,8 @@ struct FallbackFloat32 {
 
 	//*****Cast Functions****
 	FallbackUInt32 bitcast_to_uint() const noexcept { return FallbackUInt32(std::bit_cast<uint32_t>(this->v)); }
+	FallbackInt32 to_int32_truncate() const noexcept { return FallbackInt32(static_cast<int32_t>(v)); }
+	FallbackInt32 to_int32_round() const noexcept { return FallbackInt32(static_cast<int32_t>(std::nearbyint(v))); }
 
 	
 
@@ -658,6 +660,8 @@ struct Simd512Float32 {
 
 	//Converts to an unsigned integer.  No check is performed to see if that type is supported.
 	Simd512UInt32 bitcast_to_uint() const { return Simd512UInt32(_mm512_castps_si512(this->v)); }
+	Simd512Int32 to_int32_truncate() const noexcept { return Simd512Int32(_mm512_cvttps_epi32(v)); }
+	Simd512Int32 to_int32_round() const noexcept { return Simd512Int32(_mm512_cvtps_epi32(v)); }
 	
 
 	
@@ -977,6 +981,8 @@ struct Simd256Float32 {
 	
 	//Warning: Requires additional CPU features (AVX2)
 	Simd256UInt32 bitcast_to_uint() const { return Simd256UInt32(_mm256_castps_si256(this->v)); } 
+	Simd256Int32 to_int32_truncate() const noexcept { return Simd256Int32(_mm256_cvttps_epi32(v)); }
+	Simd256Int32 to_int32_round() const noexcept { return Simd256Int32(_mm256_cvtps_epi32(v)); }
 	
 
 	
@@ -1301,6 +1307,8 @@ struct Simd128Float32 {
 
 	//*****Cast Functions****
 	Simd128UInt32 bitcast_to_uint() const { return Simd128UInt32(_mm_castps_si128(this->v)); } //SSE2
+	Simd128Int32 to_int32_truncate() const noexcept { return Simd128Int32(_mm_cvttps_epi32(v)); } //SSE2
+	Simd128Int32 to_int32_round() const noexcept { return Simd128Int32(_mm_cvtps_epi32(v)); } //SSE2
 	
 
 	
@@ -1679,6 +1687,8 @@ struct Simd128Float32 {
 	}
 
 	Simd128UInt32 bitcast_to_uint() const { return Simd128UInt32(v); }
+	Simd128Int32 to_int32_truncate() const noexcept { return Simd128Int32(wasm_i32x4_trunc_sat_f32x4(v)); }
+	Simd128Int32 to_int32_round() const noexcept { return Simd128Int32(wasm_i32x4_trunc_sat_f32x4(wasm_f32x4_nearest(v))); }
 };
 
 inline static Simd128Float32 operator+(Simd128Float32 lhs, const Simd128Float32& rhs) noexcept { lhs += rhs; return lhs; }
@@ -1823,6 +1833,7 @@ static_assert(SimdReal<FallbackFloat32>, "FallbackFloat32 does not implement the
 static_assert(SimdFloat<FallbackFloat32>, "FallbackFloat32 does not implement the concept SimdFloat");
 static_assert(SimdFloat32<FallbackFloat32>, "FallbackFloat32 does not implement the concept SimdFloat32");
 static_assert(SimdFloatToInt<FallbackFloat32>, "FallbackFloat32 does not implement the concept SimdFloatToInt");
+static_assert(SimdFloat32ToInt32<FallbackFloat32>, "FallbackFloat32 does not implement the concept SimdFloat32ToInt32");
 static_assert(SimdMath<FallbackFloat32>, "FallbackFloat32 does not implement the concept SimdMath");
 static_assert(SimdCompareOps<FallbackFloat32>, "FallbackFloat32 does not implement the concept SimdCompareOps");
 
@@ -1862,11 +1873,14 @@ static_assert(SimdFloat32<Simd512Float32>, "Simd512Float32 does not implement th
 #endif
 
 static_assert(SimdFloatToInt<Simd128Float32>, "Simd128Float32 does not implement the concept SimdFloatToInt");
+static_assert(SimdFloat32ToInt32<Simd128Float32>, "Simd128Float32 does not implement the concept SimdFloat32ToInt32");
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
 static_assert(SimdFloatToInt<Simd256Float32>, "Simd256Float32 does not implement the concept SimdFloatToInt");
+static_assert(SimdFloat32ToInt32<Simd256Float32>, "Simd256Float32 does not implement the concept SimdFloat32ToInt32");
 #endif
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
 static_assert(SimdFloatToInt<Simd512Float32>, "Simd512Float32 does not implement the concept SimdFloatToInt");
+static_assert(SimdFloat32ToInt32<Simd512Float32>, "Simd512Float32 does not implement the concept SimdFloat32ToInt32");
 #endif
 
 //SIMD Math Support

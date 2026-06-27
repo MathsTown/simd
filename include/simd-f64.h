@@ -183,6 +183,8 @@ struct FallbackFloat64 {
 
 	//*****Cast Functions****
 	FallbackUInt64 bitcast_to_uint() const { return FallbackUInt64(std::bit_cast<uint64_t>(this->v)); }
+	FallbackInt64 to_int64_truncate() const noexcept { return FallbackInt64(static_cast<int64_t>(v)); }
+	FallbackInt64 to_int64_round() const noexcept { return FallbackInt64(static_cast<int64_t>(std::nearbyint(v))); }
 
 	
 
@@ -690,6 +692,8 @@ struct Simd512Float64 {
 
 	//Warning: Returned type requires additional CPU features (AVX-512DQ)
 	Simd512UInt64 bitcast_to_uint() const { return Simd512UInt64(_mm512_castpd_si512(this->v)); }
+	Simd512Int64 to_int64_truncate() const noexcept { return Simd512Int64(_mm512_cvttpd_epi64(v)); }
+	Simd512Int64 to_int64_round() const noexcept { return Simd512Int64(_mm512_cvtpd_epi64(v)); }
 
 	
 
@@ -976,6 +980,20 @@ struct Simd256Float64 {
 
 	//Warning: Requires additional CPU features (AVX2)
 	Simd256UInt64 bitcast_to_uint() const { return Simd256UInt64(_mm256_castpd_si256(this->v)); }
+	Simd256Int64 to_int64_truncate() const noexcept {
+		return Simd256Int64(_mm256_set_epi64x(
+			static_cast<int64_t>(element(3)),
+			static_cast<int64_t>(element(2)),
+			static_cast<int64_t>(element(1)),
+			static_cast<int64_t>(element(0))));
+	}
+	Simd256Int64 to_int64_round() const noexcept {
+		return Simd256Int64(_mm256_set_epi64x(
+			static_cast<int64_t>(std::nearbyint(element(3))),
+			static_cast<int64_t>(std::nearbyint(element(2))),
+			static_cast<int64_t>(std::nearbyint(element(1))),
+			static_cast<int64_t>(std::nearbyint(element(0)))));
+	}
 
 	
 
@@ -1250,6 +1268,16 @@ struct Simd128Float64 {
 
 	//Warning: May requires additional CPU features 
 	Simd128UInt64 bitcast_to_uint() const { return Simd128UInt64(_mm_castpd_si128(this->v)); } //SSE2
+	Simd128Int64 to_int64_truncate() const noexcept {
+		return Simd128Int64(_mm_set_epi64x(
+			static_cast<int64_t>(element(1)),
+			static_cast<int64_t>(element(0))));
+	}
+	Simd128Int64 to_int64_round() const noexcept {
+		return Simd128Int64(_mm_set_epi64x(
+			static_cast<int64_t>(std::nearbyint(element(1))),
+			static_cast<int64_t>(std::nearbyint(element(0)))));
+	}
 
 	
 
@@ -1628,6 +1656,20 @@ struct Simd128Float64 {
 	}
 
 	Simd128UInt64 bitcast_to_uint() const { return Simd128UInt64(v); }
+	Simd128Int64 to_int64_truncate() const noexcept {
+		const auto lanes = mt::simd_wasm_detail::to_array<double, 2>(v);
+		return Simd128Int64(mt::simd_wasm_detail::from_array<int64_t, 2>({
+			static_cast<int64_t>(lanes[0]),
+			static_cast<int64_t>(lanes[1])
+		}));
+	}
+	Simd128Int64 to_int64_round() const noexcept {
+		const auto lanes = mt::simd_wasm_detail::to_array<double, 2>(v);
+		return Simd128Int64(mt::simd_wasm_detail::from_array<int64_t, 2>({
+			static_cast<int64_t>(std::nearbyint(lanes[0])),
+			static_cast<int64_t>(std::nearbyint(lanes[1]))
+		}));
+	}
 };
 
 inline static Simd128Float64 operator+(Simd128Float64 lhs, const Simd128Float64& rhs) noexcept { lhs += rhs; return lhs; }
@@ -1794,6 +1836,7 @@ static_assert(Simd<FallbackFloat64>, "FallbackFloat64 does not implement the con
 static_assert(SimdReal<FallbackFloat64>, "FallbackFloat64 does not implement the concept SimdReal");
 static_assert(SimdFloat<FallbackFloat64>, "FallbackFloat64 does not implement the concept SimdFloat");
 static_assert(SimdFloat64<FallbackFloat64>, "FallbackFloat64 does not implement the concept SimdFloat64");
+static_assert(SimdFloat64ToInt64<FallbackFloat64>, "FallbackFloat64 does not implement the concept SimdFloat64ToInt64");
 static_assert(SimdMath<FallbackFloat64>, "FallbackFloat64 does not implement the concept SimdFloat64");
 static_assert(SimdCompareOps<FallbackFloat64>, "FallbackFloat64 does not implement the concept SimdCompareOps");
 
@@ -1835,11 +1878,14 @@ static_assert(SimdFloat64<Simd512Float64>, "Simd512Float64 does not implement th
 
 //Uint conversion support.
 static_assert(SimdFloatToInt<Simd128Float64>, "Simd128Float64 does not implement the concept SimdFloatToInt");
+static_assert(SimdFloat64ToInt64<Simd128Float64>, "Simd128Float64 does not implement the concept SimdFloat64ToInt64");
 #if MT_SIMD_ALLOW_LEVEL3_TYPES
 static_assert(SimdFloatToInt<Simd256Float64>, "Simd256Float64 does not implement the concept SimdFloatToInt");
+static_assert(SimdFloat64ToInt64<Simd256Float64>, "Simd256Float64 does not implement the concept SimdFloat64ToInt64");
 #endif
 #if MT_SIMD_ALLOW_LEVEL4_TYPES
 static_assert(SimdFloatToInt<Simd512Float64>, "Simd512Float64 does not implement the concept SimdFloatToInt");
+static_assert(SimdFloat64ToInt64<Simd512Float64>, "Simd512Float64 does not implement the concept SimdFloat64ToInt64");
 #endif
 
 //SIMD Math Support

@@ -395,4 +395,16 @@ concept SimdFloatToInt = Simd<T> && SimdFloat<T> && requires (T t) {
 
 };
 
+template <typename T>
+concept SimdFloat32ToInt32 = SimdFloat32<T> && SimdInt32<typename T::I> && requires (T t) {
+	{ t.to_int32_truncate() } -> std::same_as<typename T::I>;
+	{ t.to_int32_round() } -> std::same_as<typename T::I>;
+};
+
+template <typename T>
+concept SimdFloat64ToInt64 = SimdFloat64<T> && SimdInt64<typename T::I> && requires (T t) {
+	{ t.to_int64_truncate() } -> std::same_as<typename T::I>;
+	{ t.to_int64_round() } -> std::same_as<typename T::I>;
+};
+
 } // namespace mt

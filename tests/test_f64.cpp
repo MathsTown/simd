@@ -1002,6 +1002,43 @@ bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformati
     }
 
     {
+        constexpr double conversion_values[] = {
+            -8192.75,
+            -1024.5,
+            -17.5,
+            -3.25,
+            -0.5,
+            0.0,
+            0.5,
+            1.25,
+            2.5,
+            3.5,
+            1024.75,
+            1048576.0
+        };
+        alignas(SimdType) SimdType values{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            values.set_element(lane, conversion_values[lane % static_cast<int>(sizeof(conversion_values) / sizeof(conversion_values[0]))]);
+        }
+
+        const IntType truncated = values.to_int64_truncate();
+        const IntType rounded = values.to_int64_round();
+        for (int lane = 0; lane < lanes; ++lane) {
+            const double value = values.element(lane);
+            const int64_t expected_truncate = static_cast<int64_t>(value);
+            const int64_t expected_round = static_cast<int64_t>(std::nearbyint(value));
+            if (truncated.element(lane) != expected_truncate) {
+                harness.add_result(test_name, false, "to_int64_truncate mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+            if (rounded.element(lane) != expected_round) {
+                harness.add_result(test_name, false, "to_int64_round mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+    }
+
+    {
         alignas(64) double source[96]{};
         for (int i = 0; i < static_cast<int>(sizeof(source) / sizeof(source[0])); ++i) {
             source[i] = static_cast<double>(i) * 1.125 - 70.0;

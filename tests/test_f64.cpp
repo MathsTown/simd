@@ -143,6 +143,13 @@ bool double_matches_exact(double actual, double expected) {
     return std::bit_cast<uint64_t>(actual) == std::bit_cast<uint64_t>(expected);
 }
 
+bool float_matches_exact(float actual, float expected) {
+    if (std::isnan(actual) && std::isnan(expected)) {
+        return true;
+    }
+    return std::bit_cast<uint32_t>(actual) == std::bit_cast<uint32_t>(expected);
+}
+
 double apply_scalar_binary(double lhs, double rhs, ArithmeticOp op) {
     if (op == ArithmeticOp::add) {
         return lhs + rhs;
@@ -996,6 +1003,80 @@ bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformati
             const uint64_t expected = bit_patterns[lane % static_cast<int>(sizeof(bit_patterns) / sizeof(bit_patterns[0]))];
             if (bits.element(lane) != expected) {
                 harness.add_result(test_name, false, "bitcast_to_uint mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+    }
+
+    {
+        using Float32Type = decltype(std::declval<SimdType>().to_float32_fill_lower_half());
+        using Float32BitUintType = decltype(std::declval<Float32Type>().bitcast_to_uint());
+        constexpr int f32_lanes = Float32Type::number_of_elements();
+        static_assert(f32_lanes >= lanes);
+
+        constexpr double f64_values[] = {
+            -8192.5,
+            -257.25,
+            -17.5,
+            -3.25,
+            -0.5,
+            0.0,
+            0.5,
+            1.25,
+            2.5,
+            3.5,
+            1024.75,
+            1048576.0
+        };
+        alignas(SimdType) SimdType values{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            values.set_element(lane, f64_values[lane % static_cast<int>(sizeof(f64_values) / sizeof(f64_values[0]))]);
+        }
+
+        const Float32Type narrowed = values.to_float32_fill_lower_half();
+        const Float32BitUintType narrowed_bits = narrowed.bitcast_to_uint();
+        for (int lane = 0; lane < lanes; ++lane) {
+            const float expected = static_cast<float>(values.element(lane));
+            if (!float_matches_exact(narrowed.element(lane), expected)) {
+                harness.add_result(test_name, false, "to_float32_fill_lower_half mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+            if (narrowed_bits.element(lane) != std::bit_cast<uint32_t>(expected)) {
+                harness.add_result(test_name, false, "to_float32_fill_lower_half bit pattern mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+        for (int lane = lanes; lane < f32_lanes; ++lane) {
+            if (!float_matches_exact(narrowed.element(lane), 0.0f)) {
+                harness.add_result(test_name, false, "to_float32_fill_lower_half did not zero upper lane " + std::to_string(lane));
+                return false;
+            }
+            if (narrowed_bits.element(lane) != 0u) {
+                harness.add_result(test_name, false, "to_float32_fill_lower_half upper bit pattern was not zero, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+
+        constexpr float f32_values[] = {
+            -1024.5f,
+            -19.25f,
+            -2.5f,
+            0.0f,
+            0.5f,
+            3.25f,
+            17.5f,
+            2048.75f
+        };
+        alignas(Float32Type) Float32Type source{};
+        for (int lane = 0; lane < f32_lanes; ++lane) {
+            source.set_element(lane, f32_values[lane % static_cast<int>(sizeof(f32_values) / sizeof(f32_values[0]))]);
+        }
+
+        const SimdType widened = SimdType::make_from_float32_lower_half(source);
+        for (int lane = 0; lane < lanes; ++lane) {
+            const double expected = static_cast<double>(source.element(lane));
+            if (!double_matches_exact(widened.element(lane), expected)) {
+                harness.add_result(test_name, false, "make_from_float32_lower_half mismatch, lane " + std::to_string(lane));
                 return false;
             }
         }

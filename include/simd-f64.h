@@ -75,6 +75,7 @@ I've included FallbackFloat64 for use with Emscripen, but use SimdNativeFloat64 
 #include "simd-concepts.h"
 #include "simd-common.h"
 #include "simd-mask.h"
+#include "simd-f32.h"
 #include "simd-int64.h"
 #include "simd-uint32.h"
 #include "simd-uint64.h"
@@ -179,10 +180,12 @@ struct FallbackFloat64 {
 		auto f = static_cast<F>(x);
 		return FallbackFloat64(f);
 	}
+	static FallbackFloat64 make_from_float32_lower_half(FallbackFloat32 i) noexcept { return FallbackFloat64(static_cast<double>(i.v)); }
 
 
 	//*****Cast Functions****
 	FallbackUInt64 bitcast_to_uint() const { return FallbackUInt64(std::bit_cast<uint64_t>(this->v)); }
+	FallbackFloat32 to_float32_fill_lower_half() const noexcept { return FallbackFloat32(static_cast<float>(v)); }
 	FallbackInt64 to_int64_truncate() const noexcept { return FallbackInt64(static_cast<int64_t>(v)); }
 	FallbackInt64 to_int64_round() const noexcept { return FallbackInt64(static_cast<int64_t>(std::nearbyint(v))); }
 
@@ -687,11 +690,17 @@ struct Simd512Float64 {
 		auto u = _mm512_cvtepu64_pd(x); //avx-512dq instruction
 		return Simd512Float64(u);
 	}
+	static Simd512Float64 make_from_float32_lower_half(Simd512Float32 i) noexcept {
+		return Simd512Float64(_mm512_cvtps_pd(_mm512_castps512_ps256(i.v)));
+	}
 
 	//*****Cast Functions****
 
 	//Warning: Returned type requires additional CPU features (AVX-512DQ)
 	Simd512UInt64 bitcast_to_uint() const { return Simd512UInt64(_mm512_castpd_si512(this->v)); }
+	Simd512Float32 to_float32_fill_lower_half() const noexcept {
+		return Simd512Float32(_mm512_insertf32x8(_mm512_setzero_ps(), _mm512_cvtpd_ps(v), 0));
+	}
 	Simd512Int64 to_int64_truncate() const noexcept { return Simd512Int64(_mm512_cvttpd_epi64(v)); }
 	Simd512Int64 to_int64_round() const noexcept { return Simd512Int64(_mm512_cvtpd_epi64(v)); }
 
@@ -973,6 +982,9 @@ struct Simd256Float64 {
 		auto u = _mm256_sub_pd(_mm256_castsi256_pd(x), _mm256_set1_pd(0x0010000000000000));
 		return Simd256Float64(u);
 	}
+	static Simd256Float64 make_from_float32_lower_half(Simd256Float32 i) noexcept {
+		return Simd256Float64(_mm256_cvtps_pd(_mm256_castps256_ps128(i.v)));
+	}
 
 
 
@@ -980,6 +992,9 @@ struct Simd256Float64 {
 
 	//Warning: Requires additional CPU features (AVX2)
 	Simd256UInt64 bitcast_to_uint() const { return Simd256UInt64(_mm256_castpd_si256(this->v)); }
+	Simd256Float32 to_float32_fill_lower_half() const noexcept {
+		return Simd256Float32(_mm256_insertf128_ps(_mm256_setzero_ps(), _mm256_cvtpd_ps(v), 0));
+	}
 	Simd256Int64 to_int64_truncate() const noexcept {
 		return Simd256Int64(_mm256_set_epi64x(
 			static_cast<int64_t>(element(3)),
@@ -1263,11 +1278,17 @@ struct Simd128Float64 {
 
 
 	//static Simd128Float64 make_from_int64(Simd128UInt64 i) { return Simd128Float64(_mm_cvtepi64_pd(i.v)); } //SSE2
+	static Simd128Float64 make_from_float32_lower_half(Simd128Float32 i) noexcept {
+		return Simd128Float64(_mm_cvtps_pd(i.v));
+	}
 
 	//*****Cast Functions****
 
 	//Warning: May requires additional CPU features 
 	Simd128UInt64 bitcast_to_uint() const { return Simd128UInt64(_mm_castpd_si128(this->v)); } //SSE2
+	Simd128Float32 to_float32_fill_lower_half() const noexcept {
+		return Simd128Float32(_mm_movelh_ps(_mm_cvtpd_ps(v), _mm_setzero_ps()));
+	}
 	Simd128Int64 to_int64_truncate() const noexcept {
 		return Simd128Int64(_mm_set_epi64x(
 			static_cast<int64_t>(element(1)),
@@ -1654,8 +1675,12 @@ struct Simd128Float64 {
 		}
 		return Simd128Float64(mt::simd_wasm_detail::from_array<double, 2>(converted));
 	}
+	static Simd128Float64 make_from_float32_lower_half(Simd128Float32 i) noexcept {
+		return Simd128Float64(wasm_f64x2_promote_low_f32x4(i.v));
+	}
 
 	Simd128UInt64 bitcast_to_uint() const { return Simd128UInt64(v); }
+	Simd128Float32 to_float32_fill_lower_half() const noexcept { return Simd128Float32(wasm_f32x4_demote_f64x2_zero(v)); }
 	Simd128Int64 to_int64_truncate() const noexcept {
 		const auto lanes = mt::simd_wasm_detail::to_array<double, 2>(v);
 		return Simd128Int64(mt::simd_wasm_detail::from_array<int64_t, 2>({

@@ -45,7 +45,11 @@ Other architectures keep the same class layout, but use compile-time capability 
 
 
 #include <stdint.h>
+#if defined(_MSC_VER)
 #include <intrin.h>
+#else
+#include <cpuid.h>
+#endif
 #include <bitset>
 
 namespace mt {
@@ -61,26 +65,42 @@ private:
 
 public:
 	
+	/**************************************************************************************************
+	* Portable CPUID leaf/subleaf query: MSVC intrinsics, or <cpuid.h> on GCC/clang targets.
+	* ************************************************************************************************/
+	static void cpuid_leaf(int data[4], int leaf, int subleaf) noexcept {
+#if defined(_MSC_VER)
+		__cpuidex(data, leaf, subleaf);
+#else
+		unsigned int eax{}, ebx{}, ecx{}, edx{};
+		__cpuid_count(leaf, subleaf, eax, ebx, ecx, edx);
+		data[0] = static_cast<int>(eax);
+		data[1] = static_cast<int>(ebx);
+		data[2] = static_cast<int>(ecx);
+		data[3] = static_cast<int>(edx);
+#endif
+	}
+
 	//Constructor - Performs CPUIDs and saves results.
 	CpuInformation() noexcept {
 		int data[4];
 
 		//Get the number of ids
-		__cpuid(data,0);
+		cpuid_leaf(data, 0, 0);
 		int max_id = data[0];
 
 		if (max_id >= 1) {
-			__cpuid(data, 1);
+			cpuid_leaf(data, 1, 0);
 			ecx1 = data[2];
 			edx1 = data[3];
 		}
 		if (max_id >= 7) {
-			__cpuidex(data, 7, 0);
+			cpuid_leaf(data, 7, 0);
 			ebx7 = data[1];
 			ecx7 = data[2];
-			edx7 = data[3];			
-			
-			__cpuidex(data, 7, 1);
+			edx7 = data[3];
+
+			cpuid_leaf(data, 7, 1);
 			eax7_1 = data[0];
 		}
 	}

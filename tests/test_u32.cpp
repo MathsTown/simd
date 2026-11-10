@@ -698,7 +698,127 @@ bool run_uint32_metadata_test_for_type(const std::string& type_name, CpuInformat
         }
     }
 
-    harness.add_result(test_name, true, "make_sequential, make_set1, make_load/store, and size_of_element() matched");
+    {
+        constexpr int lanes = SimdType::number_of_elements();
+        // make_load_first and store_first for every count: the lanes below it match, those above are zero, and the
+        // memory at and past the count is untouched.
+        uint32_t source[lanes]{};
+        for (int i = 0; i < lanes; ++i) {
+            source[i] = static_cast<uint32_t>(i) * 3u + 7u;
+        }
+        for (int count = 0; count <= lanes; ++count) {
+            const SimdType loaded = SimdType::make_load_first(source, count);
+            uint32_t destination[lanes + 1]{};
+            for (int i = 0; i <= lanes; ++i) {
+                destination[i] = 99u;
+            }
+            loaded.store_first(destination, count);
+            for (int lane = 0; lane < lanes; ++lane) {
+                const uint32_t expected = lane < count ? source[lane] : 0u;
+                const uint32_t stored = lane < count ? source[lane] : 99u;
+                if (!((loaded.element(lane)) == (expected)) || !((destination[lane]) == (stored))) {
+                    harness.add_result(test_name, false, "make_load_first/store_first mismatch, count " + std::to_string(count) + ", lane " + std::to_string(lane));
+                    return false;
+                }
+            }
+            if (destination[lanes] != 99u) {
+                harness.add_result(test_name, false, "store_first wrote past its count");
+                return false;
+            }
+        }
+    }
+
+    {
+        constexpr int lanes = SimdType::number_of_elements();
+        // make_gather and make_mask_gather against scalar indexing: byte offsets at scale 1, element indices at the
+        // element's size, and the masked form taking if_false where the mask is clear. A clear lane's index points far
+        // outside the array: a gather that touched its memory would fault.
+        using IndexType = typename SimdType::I;
+        uint32_t source[96]{};
+        for (int i = 0; i < 96; ++i) {
+            source[i] = static_cast<uint32_t>(i) * 3u + 7u;
+        }
+        constexpr int base_element = 40;
+        constexpr int gather_indices[] = { 3, -1, 7, -4, 0, 3, 11, -8, 5, 2, -2, 9, -6, 1, 4, -3 };
+        IndexType byte_offsets{};
+        IndexType element_indices{};
+        IndexType masked_indices{};
+        SimdType if_false{};
+        SimdType mask_lhs{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            const int index = gather_indices[lane % 16];
+            byte_offsets.set_element(lane, static_cast<int32_t>(index * static_cast<int>(sizeof(uint32_t))));
+            element_indices.set_element(lane, static_cast<int32_t>(index));
+            masked_indices.set_element(lane, lane % 2 == 0 ? static_cast<int32_t>(index) : static_cast<int32_t>(1) << 30);
+            if_false.set_element(lane, 1000u + static_cast<uint32_t>(lane));
+            mask_lhs.set_element(lane, lane % 2 == 0 ? 1u : 0u);
+        }
+        const uint32_t* base = source + base_element;
+        const SimdType gathered_byte_offsets = SimdType::make_gather(base, byte_offsets);
+        const SimdType gathered_scaled_indices = SimdType::template make_gather<4>(base, element_indices);
+        const SimdType masked = SimdType::template make_mask_gather<4>(base, masked_indices, if_false, compare_equal(mask_lhs, SimdType(1u)));
+        for (int lane = 0; lane < lanes; ++lane) {
+            const uint32_t expected = source[base_element + gather_indices[lane % 16]];
+            const uint32_t masked_expected = lane % 2 == 0 ? expected : if_false.element(lane);
+            if (gathered_byte_offsets.element(lane) != expected || gathered_scaled_indices.element(lane) != expected) {
+                harness.add_result(test_name, false, "make_gather mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+            if (masked.element(lane) != masked_expected) {
+                harness.add_result(test_name, false, "make_mask_gather mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+    }
+
+    {
+        constexpr int lanes = SimdType::number_of_elements();
+        // scatter and scatter_first against scalar stores: byte offsets at scale 1, element indices at the element's
+        // size; scatter_first writes its count only, and lanes sharing an address keep the highest lane's value.
+        using IndexType = typename SimdType::I;
+        SimdType value{};
+        IndexType element_indices{};
+        IndexType byte_offsets{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            value.set_element(lane, static_cast<uint32_t>(lane + 100) * 3u + 7u);
+            element_indices.set_element(lane, static_cast<int32_t>((lane * 7) % 61));
+            byte_offsets.set_element(lane, static_cast<int32_t>(((lane * 7) % 61) * static_cast<int>(sizeof(uint32_t))));
+        }
+        uint32_t scaled[64]{};
+        uint32_t bytes[64]{};
+        uint32_t first[64]{};
+        for (int i = 0; i < 64; ++i) {
+            scaled[i] = 99u;
+            bytes[i] = 99u;
+            first[i] = 99u;
+        }
+        const int count = (lanes + 1) / 2;
+        value.template scatter<4>(scaled, element_indices);
+        value.scatter(bytes, byte_offsets);
+        value.template scatter_first<4>(first, element_indices, count);
+        for (int i = 0; i < 64; ++i) {
+            uint32_t expected = 99u;
+            uint32_t expected_first = 99u;
+            for (int lane = 0; lane < lanes; ++lane) {
+                if ((lane * 7) % 61 == i) {
+                    expected = value.element(lane);
+                    expected_first = lane < count ? value.element(lane) : expected_first;
+                }
+            }
+            if (!((scaled[i]) == (expected)) || !((bytes[i]) == (expected)) || !((first[i]) == (expected_first))) {
+                harness.add_result(test_name, false, "scatter mismatch, element " + std::to_string(i));
+                return false;
+            }
+        }
+        uint32_t shared[8]{};
+        value.template scatter<4>(shared, IndexType(static_cast<int32_t>(5)));
+        if (!((shared[5]) == (value.element(lanes - 1)))) {
+            harness.add_result(test_name, false, "scatter to one address did not keep the highest lane");
+            return false;
+        }
+    }
+
+    harness.add_result(test_name, true, "make_sequential, make_set1, the loads, stores, gathers and scatters, and size_of_element() matched");
     return true;
 }
 

@@ -119,6 +119,7 @@ Simd - Base SIMD-like value type
  - support checks (`cpu_supported()`, `compiler_supported()`)
  - lane metadata (`size_of_element()`, `number_of_elements()`)
  - lane access (`element(i)`, `set_element(i, value)`)
+ - memory (`make_load(pointer)`, `store(pointer)`; `make_load_first(pointer, count)` and `store_first(pointer, count)` touch only the first `count` elements)
  - arithmetic with same type (`+`, `-`, `*`, `/` and compound assignments)
  - construction helper (`make_sequential(...)`)
 
@@ -158,6 +159,16 @@ Shared compare helpers:
  - `simd-common.h` provides shared `compare_*`, `blend`, `if_*`, and floating-point `if_nan`
  - raw `float` and `double` can use the same branchless helper API as SIMD/fallback types
 
+SimdGather - SIMD type that gathers from and scatters to memory by an index a lane
+ - everything in `Simd`
+ - `T::I`, the signed integer type of the same lane count, holds the indices; `Scale` (1, 2, 4 or 8) is the bytes an index counts
+ - gathers (`make_gather<Scale>(base, indices)`, `make_mask_gather<Scale>(base, indices, if_false, mask)`: a clear lane touches no memory)
+ - scatters (`scatter<Scale>(base, indices)`, `scatter_first<Scale>(base, indices, count)`: a scalar loop below AVX-512, the instruction on it)
+ - the Float64 types also gather `float` memory into double lanes (`make_gather_from_float32<Scale>`, `make_mask_gather_from_float32<Scale>`)
+
+Shared memory helpers:
+ - `simd-common.h` provides `load_interleaved<K>(source, streams)` and `store_interleaved<K>(destination, streams)`: records of `K` elements as `K` vectors, over any `SimdGather` type
+
 SimdInteger - Integer SIMD type (signed or unsigned)
  - everything in `Simd`
  - scalar arithmetic overloads (`simd op scalar`, `scalar op simd`, compound scalar assignments)
@@ -195,6 +206,7 @@ SimdFloatToInt - Float SIMD type that supports bit reinterpret cast to matching 
 - SimdFloat32
 - SimdMath (Full Simd for MSVC via SVML, but currently only slower fallback options for GCC and Clang)
 - SimdCompareOps
+- SimdGather
 - SimdFloatToInt
 
 64-bit Floating Point: Simd512Float64, Simd256Float64, Simd128Float64 & FallbackFloat64 implement:
@@ -205,6 +217,7 @@ SimdFloatToInt - Float SIMD type that supports bit reinterpret cast to matching 
 - SimdFloat64
 - SimdMath (Full Simd for MSVC via SVML, but currently only slower fallback options for GCC and Clang)
 - SimdCompareOps
+- SimdGather
 - SimdFloatToInt
 
 32-bit Integer: Simd512Int32, Simd256Int32, Simd128Int32 & FallbackInt32 implement:
@@ -214,6 +227,7 @@ SimdFloatToInt - Float SIMD type that supports bit reinterpret cast to matching 
 - SimdInt
 - SimdInt32
 - SimdCompareOps
+- SimdGather
 
 64-bit Integer: Simd512Int64, Simd256Int64, Simd128Int64 & FallbackInt64 implement:
 - Simd
@@ -222,6 +236,7 @@ SimdFloatToInt - Float SIMD type that supports bit reinterpret cast to matching 
 - SimdInt
 - SimdInt64
 - SimdCompareOps
+- SimdGather
 
 32-bit Unsigned Integer: Simd512Uint32, Simd256Uint32, Simd128Uint32 & FallbackUInt32 implement:
 - Simd
@@ -229,6 +244,7 @@ SimdFloatToInt - Float SIMD type that supports bit reinterpret cast to matching 
 - SimdUInt
 - SimdUInt32
 - SimdCompareOps
+- SimdGather
 
 64-bit Unsigned Integer: Simd512Uint64, Simd256Uint64, Simd128Uint64 & FallbackUInt64 implement:
 - Simd
@@ -236,6 +252,7 @@ SimdFloatToInt - Float SIMD type that supports bit reinterpret cast to matching 
 - SimdUInt
 - SimdUInt64
 - SimdCompareOps
+- SimdGather
 
 
 ## Compilers Specific Notes

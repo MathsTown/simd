@@ -935,6 +935,117 @@ bool run_float32_helper_test_for_type(const std::string& type_name, CpuInformati
     }
 
     {
+        // make_load_first and store_first for every count: the lanes below it match, those above are zero, and the
+        // memory at and past the count is untouched.
+        float source[lanes]{};
+        for (int i = 0; i < lanes; ++i) {
+            source[i] = static_cast<float>(i) * 1.5f - 4.0f;
+        }
+        for (int count = 0; count <= lanes; ++count) {
+            const SimdType loaded = SimdType::make_load_first(source, count);
+            float destination[lanes + 1]{};
+            for (int i = 0; i <= lanes; ++i) {
+                destination[i] = -99.0f;
+            }
+            loaded.store_first(destination, count);
+            for (int lane = 0; lane < lanes; ++lane) {
+                const float expected = lane < count ? source[lane] : 0.0f;
+                const float stored = lane < count ? source[lane] : -99.0f;
+                if (!float_matches_exact(loaded.element(lane), expected) || !float_matches_exact(destination[lane], stored)) {
+                    harness.add_result(test_name, false, "make_load_first/store_first mismatch, count " + std::to_string(count) + ", lane " + std::to_string(lane));
+                    return false;
+                }
+            }
+            if (destination[lanes] != -99.0f) {
+                harness.add_result(test_name, false, "store_first wrote past its count");
+                return false;
+            }
+        }
+    }
+
+    {
+        // scatter and scatter_first against scalar stores: byte offsets at scale 1, element indices at the element's
+        // size; scatter_first writes its count only, and lanes sharing an address keep the highest lane's value.
+        using IndexType = typename SimdType::I;
+        SimdType value{};
+        IndexType element_indices{};
+        IndexType byte_offsets{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            value.set_element(lane, static_cast<float>(lane + 100) * 1.5f - 4.0f);
+            element_indices.set_element(lane, static_cast<int32_t>((lane * 7) % 61));
+            byte_offsets.set_element(lane, static_cast<int32_t>(((lane * 7) % 61) * static_cast<int>(sizeof(float))));
+        }
+        float scaled[64]{};
+        float bytes[64]{};
+        float first[64]{};
+        for (int i = 0; i < 64; ++i) {
+            scaled[i] = -99.0f;
+            bytes[i] = -99.0f;
+            first[i] = -99.0f;
+        }
+        const int count = (lanes + 1) / 2;
+        value.template scatter<4>(scaled, element_indices);
+        value.scatter(bytes, byte_offsets);
+        value.template scatter_first<4>(first, element_indices, count);
+        for (int i = 0; i < 64; ++i) {
+            float expected = -99.0f;
+            float expected_first = -99.0f;
+            for (int lane = 0; lane < lanes; ++lane) {
+                if ((lane * 7) % 61 == i) {
+                    expected = value.element(lane);
+                    expected_first = lane < count ? value.element(lane) : expected_first;
+                }
+            }
+            if (!float_matches_exact(scaled[i], expected) || !float_matches_exact(bytes[i], expected) || !float_matches_exact(first[i], expected_first)) {
+                harness.add_result(test_name, false, "scatter mismatch, element " + std::to_string(i));
+                return false;
+            }
+        }
+        float shared[8]{};
+        value.template scatter<4>(shared, IndexType(static_cast<int32_t>(5)));
+        if (!float_matches_exact(shared[5], value.element(lanes - 1))) {
+            harness.add_result(test_name, false, "scatter to one address did not keep the highest lane");
+            return false;
+        }
+    }
+
+    {
+        // load_interleaved and store_interleaved: records of K elements as K streams, for K of 4 and of 3.
+        float records[lanes * 4]{};
+        for (int i = 0; i < lanes * 4; ++i) {
+            records[i] = static_cast<float>(i) * 1.5f - 4.0f;
+        }
+        float written[lanes * 4 + 1]{};
+        for (int i = 0; i <= lanes * 4; ++i) {
+            written[i] = -99.0f;
+        }
+        SimdType streams[4];
+        load_interleaved(records, streams);
+        store_interleaved(written, streams);
+        for (int k = 0; k < 4; ++k) {
+            for (int lane = 0; lane < lanes; ++lane) {
+                if (!float_matches_exact(streams[k].element(lane), records[lane * 4 + k]) || !float_matches_exact(written[lane * 4 + k], records[lane * 4 + k])) {
+                    harness.add_result(test_name, false, "load_interleaved/store_interleaved mismatch, stream " + std::to_string(k) + ", lane " + std::to_string(lane));
+                    return false;
+                }
+            }
+        }
+        if (written[lanes * 4] != -99.0f) {
+            harness.add_result(test_name, false, "store_interleaved wrote past its records");
+            return false;
+        }
+        SimdType three[3];
+        load_interleaved(records, three);
+        store_interleaved(written, three);
+        for (int i = 0; i < lanes * 3; ++i) {
+            if (!float_matches_exact(written[i], records[i])) {
+                harness.add_result(test_name, false, "interleaved records of three mismatch, element " + std::to_string(i));
+                return false;
+            }
+        }
+    }
+
+    {
         alignas(UIntType) UIntType ints{};
         for (int lane = 0; lane < lanes; ++lane) {
             ints.set_element(lane, static_cast<uint32_t>(lane * 17 + 3));

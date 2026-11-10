@@ -97,6 +97,7 @@ struct FallbackInt64 {
 	int64_t v;
 	typedef int64_t F;
 	typedef bool MaskType;
+	typedef FallbackInt64 I;
 	FallbackInt64() = default;
 	FallbackInt64(int64_t a) : v(a) {};
 
@@ -119,11 +120,27 @@ struct FallbackInt64 {
 	F element(int) const { return v; }
 	void set_element(int, F value) { v = value; }
 	void store(F* destination) const noexcept { *destination = v; }
+	void store_first(F* destination, int count) const noexcept { simd_detail::store_first_lanes(*this, destination, count); }
+	template <int Scale = 1>
+	void scatter(F* base, FallbackInt64 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 1); }
+	template <int Scale = 1>
+	void scatter_first(F* base, FallbackInt64 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 
 	//*****Make Functions****
 	static FallbackInt64 make_sequential(int64_t first) { return FallbackInt64(first); }
 	static FallbackInt64 make_set1(int64_t v) { return FallbackInt64(v); }
 	static FallbackInt64 make_load(const F* source) noexcept { return FallbackInt64(*source); }
+	static FallbackInt64 make_load_first(const F* source, int count) noexcept { return simd_detail::load_first_lanes<FallbackInt64>(source, count); }
+	template <int Scale = 1>
+	static FallbackInt64 make_gather(const F* base, FallbackInt64 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return FallbackInt64(simd_detail::gather_element<Scale>(base, indices.v));
+	}
+	template <int Scale = 1>
+	static FallbackInt64 make_mask_gather(const F* base, FallbackInt64 indices, FallbackInt64 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return mask ? make_gather<Scale>(base, indices) : if_false;
+	}
 
 
 	//*****Addition Operators*****
@@ -242,6 +259,12 @@ namespace simd_detail_i64 {
 		return _mm_loadu_si128(reinterpret_cast<const __m128i*>(lanes));
 #endif
 	}
+	inline bool mask_lane_active(__m128i mask, int i) noexcept {
+		return (static_cast<uint64_t>(lane_get(mask, i)) & 0x8000000000000000ull) != 0;
+	}
+
+	// The AVX2 lane mask of the first count lanes, for the masked loads and stores.
+	inline __m256i first_lanes_mask(int count) noexcept { return _mm256_cmpgt_epi64(_mm256_set1_epi64x(count), _mm256_setr_epi64x(0, 1, 2, 3)); }
 	inline int64_t lane_get(const __m256i& v, int i) noexcept {
 #if MT_SIMD_HAS_MSVC_VECTOR_MEMBERS
 		return v.m256i_i64[i];
@@ -330,6 +353,7 @@ struct Simd512Int64 {
 	__m512i v;
 	typedef int64_t F;
 	typedef __mmask8 MaskType;
+	typedef Simd512Int64 I;
 
 	Simd512Int64() = default;
 	Simd512Int64(__m512i a) : v(a) {};
@@ -355,6 +379,17 @@ struct Simd512Int64 {
 	F element(int i) const { return mt::simd_detail_i64::lane_get(v, i); }
 	void set_element(int i, F value) { mt::simd_detail_i64::lane_set(v, i, value); }
 	void store(F* destination) const noexcept { _mm512_storeu_si512(destination, v); }
+	void store_first(F* destination, int count) const noexcept { _mm512_mask_storeu_epi64(destination, static_cast<__mmask8>((1u << count) - 1u), v); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd512Int64 indices) const noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Scatter scale must be 1, 2, 4, or 8.");
+		_mm512_i64scatter_epi64(base, indices.v, v, Scale);
+	}
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd512Int64 indices, int count) const noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Scatter scale must be 1, 2, 4, or 8.");
+		_mm512_mask_i64scatter_epi64(base, static_cast<__mmask8>((1u << count) - 1u), indices.v, v, Scale);
+	}
 
 	//*****Make Functions****
 	static Simd512Int64 make_sequential(int64_t first) {
@@ -365,6 +400,17 @@ struct Simd512Int64 {
 	}
 	static Simd512Int64 make_set1(int64_t v) { return Simd512Int64(_mm512_set1_epi64(v)); }
 	static Simd512Int64 make_load(const F* source) noexcept { return Simd512Int64(_mm512_loadu_si512(source)); }
+	static Simd512Int64 make_load_first(const F* source, int count) noexcept { return Simd512Int64(_mm512_maskz_loadu_epi64(static_cast<__mmask8>((1u << count) - 1u), source)); }
+	template <int Scale = 1>
+	static Simd512Int64 make_gather(const F* base, Simd512Int64 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd512Int64(_mm512_i64gather_epi64(indices.v, base, Scale));
+	}
+	template <int Scale = 1>
+	static Simd512Int64 make_mask_gather(const F* base, Simd512Int64 indices, Simd512Int64 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd512Int64(_mm512_mask_i64gather_epi64(if_false.v, mask, indices.v, base, Scale));
+	}
 
 
 	//*****Addition Operators*****
@@ -477,6 +523,7 @@ struct Simd256Int64 {
 	__m256i v;
 	typedef int64_t F;
 	typedef __m256i MaskType;
+	typedef Simd256Int64 I;
 
 	Simd256Int64() = default;
 	Simd256Int64(__m256i a) : v(a) {};
@@ -502,6 +549,11 @@ struct Simd256Int64 {
 	F element(int i) const { return mt::simd_detail_i64::lane_get(v, i); }
 	void set_element(int i, F value) { mt::simd_detail_i64::lane_set(v, i, value); }
 	void store(F* destination) const noexcept { _mm256_storeu_si256(reinterpret_cast<__m256i*>(destination), v); }
+	void store_first(F* destination, int count) const noexcept { _mm256_maskstore_epi64(reinterpret_cast<long long*>(destination), simd_detail_i64::first_lanes_mask(count), v); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd256Int64 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 4); }
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd256Int64 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 
 	//*****Addition Operators*****
 	Simd256Int64& operator+=(const Simd256Int64& rhs) noexcept { v = _mm256_add_epi64(v, rhs.v); return *this; }
@@ -567,6 +619,17 @@ struct Simd256Int64 {
 	}
 	static Simd256Int64 make_set1(int64_t v) { return Simd256Int64(_mm256_set1_epi64x(v)); }
 	static Simd256Int64 make_load(const F* source) noexcept { return Simd256Int64(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(source))); }
+	static Simd256Int64 make_load_first(const F* source, int count) noexcept { return Simd256Int64(_mm256_maskload_epi64(reinterpret_cast<const long long*>(source), simd_detail_i64::first_lanes_mask(count))); }
+	template <int Scale = 1>
+	static Simd256Int64 make_gather(const F* base, Simd256Int64 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd256Int64(_mm256_i64gather_epi64(reinterpret_cast<const long long*>(base), indices.v, Scale));
+	}
+	template <int Scale = 1>
+	static Simd256Int64 make_mask_gather(const F* base, Simd256Int64 indices, Simd256Int64 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd256Int64(_mm256_mask_i64gather_epi64(if_false.v, reinterpret_cast<const long long*>(base), indices.v, mask, Scale));
+	}
 
 
 };
@@ -686,6 +749,7 @@ struct Simd128Int64 {
 	__m128i v;
 	typedef int64_t F;
 	typedef __m128i MaskType;
+	typedef Simd128Int64 I;
 
 	Simd128Int64() = default;
 	Simd128Int64(__m128i a) : v(a) {};
@@ -711,6 +775,11 @@ struct Simd128Int64 {
 	F element(int i) const { return mt::simd_detail_i64::lane_get(v, i); }
 	void set_element(int i, F value) { v = mt::simd_detail_i64::lane_set(v, i, value); }
 	void store(F* destination) const noexcept { _mm_storeu_si128(reinterpret_cast<__m128i*>(destination), v); }
+	void store_first(F* destination, int count) const noexcept { simd_detail::store_first_lanes(*this, destination, count); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd128Int64 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 2); }
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd128Int64 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 
 	//*****Addition Operators*****
 	Simd128Int64& operator+=(const Simd128Int64& rhs) noexcept { v = _mm_add_epi64(v, rhs.v); return *this; }
@@ -755,6 +824,21 @@ struct Simd128Int64 {
 	}
 	static Simd128Int64 make_set1(int64_t v) { return Simd128Int64(_mm_set1_epi64x(v)); }
 	static Simd128Int64 make_load(const F* source) noexcept { return Simd128Int64(_mm_loadu_si128(reinterpret_cast<const __m128i*>(source))); }
+	static Simd128Int64 make_load_first(const F* source, int count) noexcept { return simd_detail::load_first_lanes<Simd128Int64>(source, count); }
+	template <int Scale = 1>
+	static Simd128Int64 make_gather(const F* base, Simd128Int64 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Int64(_mm_set_epi64x(
+			static_cast<long long>(simd_detail::gather_element<Scale>(base, indices.element(1))),
+			static_cast<long long>(simd_detail::gather_element<Scale>(base, indices.element(0)))));
+	}
+	template <int Scale = 1>
+	static Simd128Int64 make_mask_gather(const F* base, Simd128Int64 indices, Simd128Int64 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Int64(_mm_set_epi64x(
+			static_cast<long long>(simd_detail_i64::mask_lane_active(mask, 1) ? simd_detail::gather_element<Scale>(base, indices.element(1)) : if_false.element(1)),
+			static_cast<long long>(simd_detail_i64::mask_lane_active(mask, 0) ? simd_detail::gather_element<Scale>(base, indices.element(0)) : if_false.element(0))));
+	}
 
 
 
@@ -942,6 +1026,7 @@ struct Simd128Int64 {
 	v128_t v;
 	typedef int64_t F;
 	typedef v128_t MaskType;
+	typedef Simd128Int64 I;
 	Simd128Int64() = default;
 	Simd128Int64(v128_t a) : v(a) {}
 	Simd128Int64(F a) : v(mt::simd_wasm_detail::splat<int64_t>(a)) {}
@@ -962,9 +1047,31 @@ struct Simd128Int64 {
 	F element(int i) const { return mt::simd_wasm_detail::lane_get<int64_t, 2>(v, i); }
 	void set_element(int i, F value) { v = mt::simd_wasm_detail::lane_set<int64_t, 2>(v, i, value); }
 	void store(F* destination) const noexcept { wasm_v128_store(destination, v); }
+	void store_first(F* destination, int count) const noexcept { simd_detail::store_first_lanes(*this, destination, count); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd128Int64 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 2); }
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd128Int64 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 	static Simd128Int64 make_sequential(int64_t first) { return Simd128Int64(mt::simd_wasm_detail::make_sequential<int64_t, 2>(first)); }
 	static Simd128Int64 make_set1(int64_t value) { return Simd128Int64(mt::simd_wasm_detail::splat<int64_t>(value)); }
 	static Simd128Int64 make_load(const F* source) noexcept { return Simd128Int64(wasm_v128_load(source)); }
+	static Simd128Int64 make_load_first(const F* source, int count) noexcept { return simd_detail::load_first_lanes<Simd128Int64>(source, count); }
+	template <int Scale = 1>
+	static Simd128Int64 make_gather(const F* base, Simd128Int64 indices) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Int64(mt::simd_wasm_detail::from_array<int64_t, 2>({
+			simd_detail::gather_element<Scale>(base, indices.element(0)),
+			simd_detail::gather_element<Scale>(base, indices.element(1))
+		}));
+	}
+	template <int Scale = 1>
+	static Simd128Int64 make_mask_gather(const F* base, Simd128Int64 indices, Simd128Int64 if_false, MaskType mask) noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
+		return Simd128Int64(mt::simd_wasm_detail::from_array<int64_t, 2>({
+			(mt::simd_wasm_detail::lane_get<uint64_t, 2>(mask, 0) & 0x8000000000000000ull) ? simd_detail::gather_element<Scale>(base, indices.element(0)) : if_false.element(0),
+			(mt::simd_wasm_detail::lane_get<uint64_t, 2>(mask, 1) & 0x8000000000000000ull) ? simd_detail::gather_element<Scale>(base, indices.element(1)) : if_false.element(1)
+		}));
+	}
 
 	Simd128Int64& operator+=(const Simd128Int64& rhs) noexcept { v = wasm_i64x2_add(v, rhs.v); return *this; }
 	Simd128Int64& operator+=(int64_t rhs) noexcept { v = wasm_i64x2_add(v, make_set1(rhs).v); return *this; }

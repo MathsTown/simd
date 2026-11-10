@@ -39,7 +39,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 namespace mt {
 
 template <typename T>
-concept Simd = requires (T t, const T ct, typename T::F lane_value) {
+concept Simd = requires (T t, const T ct, typename T::F lane_value, typename T::F* lanes, int count) {
 
 	
 
@@ -89,6 +89,12 @@ concept Simd = requires (T t, const T ct, typename T::F lane_value) {
 	//Element Access
 	ct.element(0);				//Read the value of an element  (index < number_of_elements() )
 	{ t.set_element(0, lane_value) } -> std::same_as<void>;
+
+	//Memory (contiguous lanes, any alignment; the _first forms touch only the first count elements)
+	{ T::make_load(lanes) } -> std::same_as<T>;
+	{ T::make_load_first(lanes, count) } -> std::same_as<T>;
+	{ ct.store(lanes) } -> std::same_as<void>;
+	{ ct.store_first(lanes, count) } -> std::same_as<void>;
 
 	//Make
 	{ T::make_sequential(typename T::F(static_cast<typename T::F>(1))) } -> std::same_as<T>;
@@ -202,8 +208,26 @@ concept SimdCompareOps = Simd<T>&& requires (T t) {
 	
 	blend(t, t, compare_equal(t, t));
 
-	
 
+
+};
+
+
+/**************************************************************************************************
+* Concept for types that gather from and scatter to memory by an index a lane.
+*
+* T::I is the signed integer type of the same lane count. A lane's address is the base plus its index
+* scaled by 1, 2, 4 or 8 bytes (the x86 gather's rule); a masked gather touches no memory for a lane
+* whose mask bit is clear; scatter_first writes the first count lanes only.
+*************************************************************************************************/
+template <typename T>
+concept SimdGather = Simd<T> && requires (const T ct, typename T::F* lanes, typename T::I indices, int count) {
+	{ T::make_gather(lanes, indices) } -> std::same_as<T>;
+	{ T::template make_gather<4>(lanes, indices) } -> std::same_as<T>;
+	{ T::make_mask_gather(lanes, indices, ct, compare_equal(ct, ct)) } -> std::same_as<T>;
+	{ ct.scatter(lanes, indices) } -> std::same_as<void>;
+	{ ct.template scatter<4>(lanes, indices) } -> std::same_as<void>;
+	{ ct.scatter_first(lanes, indices, count) } -> std::same_as<void>;
 };
 
 

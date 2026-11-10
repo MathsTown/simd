@@ -989,6 +989,158 @@ bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformati
         }
     }
 
+    {
+        // make_load_first and store_first for every count: the lanes below it match, those above are zero, and the
+        // memory at and past the count is untouched.
+        double source[lanes]{};
+        for (int i = 0; i < lanes; ++i) {
+            source[i] = static_cast<double>(i) * 1.5 - 4.0;
+        }
+        for (int count = 0; count <= lanes; ++count) {
+            const SimdType loaded = SimdType::make_load_first(source, count);
+            double destination[lanes + 1]{};
+            for (int i = 0; i <= lanes; ++i) {
+                destination[i] = -99.0;
+            }
+            loaded.store_first(destination, count);
+            for (int lane = 0; lane < lanes; ++lane) {
+                const double expected = lane < count ? source[lane] : 0.0;
+                const double stored = lane < count ? source[lane] : -99.0;
+                if (!double_matches_exact(loaded.element(lane), expected) || !double_matches_exact(destination[lane], stored)) {
+                    harness.add_result(test_name, false, "make_load_first/store_first mismatch, count " + std::to_string(count) + ", lane " + std::to_string(lane));
+                    return false;
+                }
+            }
+            if (destination[lanes] != -99.0) {
+                harness.add_result(test_name, false, "store_first wrote past its count");
+                return false;
+            }
+        }
+    }
+
+    {
+        // scatter and scatter_first against scalar stores: byte offsets at scale 1, element indices at the element's
+        // size; scatter_first writes its count only, and lanes sharing an address keep the highest lane's value.
+        using IndexType = typename SimdType::I;
+        SimdType value{};
+        IndexType element_indices{};
+        IndexType byte_offsets{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            value.set_element(lane, static_cast<double>(lane + 100) * 1.5 - 4.0);
+            element_indices.set_element(lane, static_cast<int64_t>((lane * 7) % 61));
+            byte_offsets.set_element(lane, static_cast<int64_t>(((lane * 7) % 61) * static_cast<int>(sizeof(double))));
+        }
+        double scaled[64]{};
+        double bytes[64]{};
+        double first[64]{};
+        for (int i = 0; i < 64; ++i) {
+            scaled[i] = -99.0;
+            bytes[i] = -99.0;
+            first[i] = -99.0;
+        }
+        const int count = (lanes + 1) / 2;
+        value.template scatter<8>(scaled, element_indices);
+        value.scatter(bytes, byte_offsets);
+        value.template scatter_first<8>(first, element_indices, count);
+        for (int i = 0; i < 64; ++i) {
+            double expected = -99.0;
+            double expected_first = -99.0;
+            for (int lane = 0; lane < lanes; ++lane) {
+                if ((lane * 7) % 61 == i) {
+                    expected = value.element(lane);
+                    expected_first = lane < count ? value.element(lane) : expected_first;
+                }
+            }
+            if (!double_matches_exact(scaled[i], expected) || !double_matches_exact(bytes[i], expected) || !double_matches_exact(first[i], expected_first)) {
+                harness.add_result(test_name, false, "scatter mismatch, element " + std::to_string(i));
+                return false;
+            }
+        }
+        double shared[8]{};
+        value.template scatter<8>(shared, IndexType(static_cast<int64_t>(5)));
+        if (!double_matches_exact(shared[5], value.element(lanes - 1))) {
+            harness.add_result(test_name, false, "scatter to one address did not keep the highest lane");
+            return false;
+        }
+    }
+
+    {
+        // make_gather_from_float32 widens floats gathered by 64-bit indices, byte offsets at scale 1 and element
+        // indices at 4; the masked form takes if_false where the mask is clear and touches no memory there (a clear
+        // lane's index points far outside the array).
+        float source[96]{};
+        for (int i = 0; i < 96; ++i) {
+            source[i] = static_cast<float>(i) * 0.125f + 0.1f;
+        }
+        constexpr int base_element = 40;
+        constexpr int gather_indices[] = { 3, -1, 7, -4, 0, 3, 11, -8 };
+        IntType byte_offsets{};
+        IntType element_indices{};
+        IntType masked_indices{};
+        SimdType if_false{};
+        SimdType mask_lhs{};
+        for (int lane = 0; lane < lanes; ++lane) {
+            const int index = gather_indices[lane % 8];
+            byte_offsets.set_element(lane, static_cast<int64_t>(index) * 4);
+            element_indices.set_element(lane, static_cast<int64_t>(index));
+            masked_indices.set_element(lane, lane % 2 == 0 ? static_cast<int64_t>(index) : (static_cast<int64_t>(1) << 40));
+            if_false.set_element(lane, -1000.0 - static_cast<double>(lane));
+            mask_lhs.set_element(lane, lane % 2 == 0 ? 1.0 : 0.0);
+        }
+        const float* base = source + base_element;
+        const SimdType gathered_byte_offsets = SimdType::make_gather_from_float32(base, byte_offsets);
+        const SimdType gathered_scaled_indices = SimdType::template make_gather_from_float32<4>(base, element_indices);
+        const SimdType masked = SimdType::template make_mask_gather_from_float32<4>(base, masked_indices, if_false, compare_equal(mask_lhs, SimdType(1.0)));
+        for (int lane = 0; lane < lanes; ++lane) {
+            const double expected = static_cast<double>(source[base_element + gather_indices[lane % 8]]);
+            const double masked_expected = lane % 2 == 0 ? expected : if_false.element(lane);
+            if (!double_matches_exact(gathered_byte_offsets.element(lane), expected) || !double_matches_exact(gathered_scaled_indices.element(lane), expected)) {
+                harness.add_result(test_name, false, "make_gather_from_float32 mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+            if (!double_matches_exact(masked.element(lane), masked_expected)) {
+                harness.add_result(test_name, false, "make_mask_gather_from_float32 mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+    }
+
+    {
+        // load_interleaved and store_interleaved: records of K elements as K streams, for K of 4 and of 3.
+        double records[lanes * 4]{};
+        for (int i = 0; i < lanes * 4; ++i) {
+            records[i] = static_cast<double>(i) * 1.5 - 4.0;
+        }
+        double written[lanes * 4 + 1]{};
+        for (int i = 0; i <= lanes * 4; ++i) {
+            written[i] = -99.0;
+        }
+        SimdType streams[4];
+        load_interleaved(records, streams);
+        store_interleaved(written, streams);
+        for (int k = 0; k < 4; ++k) {
+            for (int lane = 0; lane < lanes; ++lane) {
+                if (!double_matches_exact(streams[k].element(lane), records[lane * 4 + k]) || !double_matches_exact(written[lane * 4 + k], records[lane * 4 + k])) {
+                    harness.add_result(test_name, false, "load_interleaved/store_interleaved mismatch, stream " + std::to_string(k) + ", lane " + std::to_string(lane));
+                    return false;
+                }
+            }
+        }
+        if (written[lanes * 4] != -99.0) {
+            harness.add_result(test_name, false, "store_interleaved wrote past its records");
+            return false;
+        }
+        SimdType three[3];
+        load_interleaved(records, three);
+        store_interleaved(written, three);
+        for (int i = 0; i < lanes * 3; ++i) {
+            if (!double_matches_exact(written[i], records[i])) {
+                harness.add_result(test_name, false, "interleaved records of three mismatch, element " + std::to_string(i));
+                return false;
+            }
+        }
+    }
+
     if constexpr (requires (BitUintType ints) { SimdType::make_from_uints_52bits(ints); }) {
         alignas(BitUintType) BitUintType ints{};
         constexpr uint64_t kMask52 = 0x000fffffffffffffull;

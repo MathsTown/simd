@@ -134,6 +134,11 @@ struct FallbackFloat32 {
 	F element(int)  const { return v; }
 	void set_element(int, F value) { v = value; }
 	void store(F* destination) const noexcept { *destination = v; }
+	void store_first(F* destination, int count) const noexcept { simd_detail::store_first_lanes(*this, destination, count); }
+	template <int Scale = 1>
+	void scatter(F* base, FallbackInt32 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 1); }
+	template <int Scale = 1>
+	void scatter_first(F* base, FallbackInt32 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 
 	//*****Addition Operators*****
 	FallbackFloat32& operator+=(const FallbackFloat32& rhs) noexcept { v += rhs.v; return *this; }
@@ -158,6 +163,7 @@ struct FallbackFloat32 {
 	static FallbackFloat32 make_sequential(F first) { return FallbackFloat32(first); }
 	static FallbackFloat32 make_set1(F v) { return FallbackFloat32(v); }
 	static FallbackFloat32 make_load(const F* source) noexcept { return FallbackFloat32(*source); }
+	static FallbackFloat32 make_load_first(const F* source, int count) noexcept { return simd_detail::load_first_lanes<FallbackFloat32>(source, count); }
 	static FallbackFloat32 make_from_int32(FallbackUInt32 i) { return FallbackFloat32(static_cast<float>(static_cast<int32_t>(i.v))); }
 	template <int Scale = 1>
 	static FallbackFloat32 make_gather(const float* base, FallbackInt32 indices) noexcept {
@@ -622,6 +628,17 @@ struct Simd512Float32 {
 	F element(int i)  const { return mt::simd_detail_f32::lane_get(v, i); }
 	void set_element(int i, F value) { mt::simd_detail_f32::lane_set(v, i, value); }
 	void store(F* destination) const noexcept { _mm512_storeu_ps(destination, v); }
+	void store_first(F* destination, int count) const noexcept { _mm512_mask_storeu_ps(destination, static_cast<__mmask16>((1u << count) - 1u), v); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd512Int32 indices) const noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Scatter scale must be 1, 2, 4, or 8.");
+		_mm512_i32scatter_ps(base, indices.v, v, Scale);
+	}
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd512Int32 indices, int count) const noexcept {
+		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Scatter scale must be 1, 2, 4, or 8.");
+		_mm512_mask_i32scatter_ps(base, static_cast<__mmask16>((1u << count) - 1u), indices.v, v, Scale);
+	}
 
 	//*****Addition Operators*****
 	Simd512Float32& operator+=(const Simd512Float32& rhs) noexcept { v = _mm512_add_ps(v, rhs.v); return *this; }
@@ -646,6 +663,7 @@ struct Simd512Float32 {
 	static Simd512Float32 make_sequential(F first) { return Simd512Float32(_mm512_set_ps(first+15.0f, first + 14.0f, first + 13.0f, first + 12.0f, first + 11.0f, first + 10.0f, first + 9.0f, first + 8.0f, first + 7.0f, first + 6.0f, first + 5.0f, first + 4.0f, first + 3.0f, first + 2.0f, first + 1.0f, first)); }
 	static Simd512Float32 make_set1(F v) { return Simd512Float32(_mm512_set1_ps(v)); }
 	static Simd512Float32 make_load(const F* source) noexcept { return Simd512Float32(_mm512_loadu_ps(source)); }
+	static Simd512Float32 make_load_first(const F* source, int count) noexcept { return Simd512Float32(_mm512_maskz_loadu_ps(static_cast<__mmask16>((1u << count) - 1u), source)); }
 	
 
 	static Simd512Float32 make_from_int32(Simd512UInt32 i) { return Simd512Float32(_mm512_cvtepi32_ps(i.v)); }
@@ -944,6 +962,11 @@ struct Simd256Float32 {
 	F element(int i) const { return mt::simd_detail_f32::lane_get(v, i); }
 	void set_element(int i, F value) { mt::simd_detail_f32::lane_set(v, i, value); }
 	void store(F* destination) const noexcept { _mm256_storeu_ps(destination, v); }
+	void store_first(F* destination, int count) const noexcept { _mm256_maskstore_ps(destination, simd_detail_i32::first_lanes_mask(count), v); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd256Int32 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 8); }
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd256Int32 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 
 	//*****Addition Operators*****
 	Simd256Float32& operator+=(const Simd256Float32& rhs) noexcept { v = _mm256_add_ps(v, rhs.v); return *this; }
@@ -969,6 +992,7 @@ struct Simd256Float32 {
 	static Simd256Float32 make_sequential(F first) { return Simd256Float32(_mm256_set_ps(first+7.0f, first + 6.0f, first + 5.0f, first + 4.0f, first + 3.0f, first + 2.0f, first + 1.0f, first)); }
 	static Simd256Float32 make_set1(F v) { return Simd256Float32(_mm256_set1_ps(v)); }
 	static Simd256Float32 make_load(const F* source) noexcept { return Simd256Float32(_mm256_loadu_ps(source)); }
+	static Simd256Float32 make_load_first(const F* source, int count) noexcept { return Simd256Float32(_mm256_maskload_ps(source, simd_detail_i32::first_lanes_mask(count))); }
 	
 
 	static Simd256Float32 make_from_int32(Simd256UInt32 i) {return Simd256Float32(_mm256_cvtepi32_ps(i.v));}
@@ -1266,6 +1290,11 @@ struct Simd128Float32 {
 	F element(int i)  const { return mt::simd_detail_f32::lane_get(v, i); }
 	void set_element(int i, F value) { v = mt::simd_detail_f32::lane_set(v, i, value); }
 	void store(F* destination) const noexcept { _mm_storeu_ps(destination, v); }
+	void store_first(F* destination, int count) const noexcept { simd_detail::store_first_lanes(*this, destination, count); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd128Int32 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 4); }
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd128Int32 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 
 	//*****Addition Operators*****
 	Simd128Float32& operator+=(const Simd128Float32& rhs) noexcept { v = _mm_add_ps(v, rhs.v); return *this; } //SSE1
@@ -1291,6 +1320,7 @@ struct Simd128Float32 {
 	static Simd128Float32 make_sequential(F first) { return Simd128Float32(_mm_set_ps(first + 3.0f, first + 2.0f, first + 1.0f, first)); }
 	static Simd128Float32 make_set1(F v) { return Simd128Float32(_mm_set1_ps(v)); }
 	static Simd128Float32 make_load(const F* source) noexcept { return Simd128Float32(_mm_loadu_ps(source)); }
+	static Simd128Float32 make_load_first(const F* source, int count) noexcept { return simd_detail::load_first_lanes<Simd128Float32>(source, count); }
 
 
 	static Simd128Float32 make_from_int32(Simd128UInt32 i) { return Simd128Float32(_mm_cvtepi32_ps(i.v)); } //SSE2
@@ -1660,6 +1690,11 @@ struct Simd128Float32 {
 	F element(int i) const { return mt::simd_wasm_detail::lane_get<float, 4>(v, i); }
 	void set_element(int i, F value) { v = mt::simd_wasm_detail::lane_set<float, 4>(v, i, value); }
 	void store(F* destination) const noexcept { wasm_v128_store(destination, v); }
+	void store_first(F* destination, int count) const noexcept { simd_detail::store_first_lanes(*this, destination, count); }
+	template <int Scale = 1>
+	void scatter(F* base, Simd128Int32 indices) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, 4); }
+	template <int Scale = 1>
+	void scatter_first(F* base, Simd128Int32 indices, int count) const noexcept { simd_detail::scatter_lanes<Scale>(*this, base, indices, count); }
 
 	Simd128Float32& operator+=(const Simd128Float32& rhs) noexcept { v = wasm_f32x4_add(v, rhs.v); return *this; }
 	Simd128Float32& operator+=(float rhs) noexcept { v = wasm_f32x4_add(v, Simd128Float32(rhs).v); return *this; }
@@ -1674,6 +1709,7 @@ struct Simd128Float32 {
 	static Simd128Float32 make_sequential(F first) { return Simd128Float32(mt::simd_wasm_detail::make_sequential<float, 4>(first)); }
 	static Simd128Float32 make_set1(F value) { return Simd128Float32(mt::simd_wasm_detail::splat<float>(value)); }
 	static Simd128Float32 make_load(const F* source) noexcept { return Simd128Float32(wasm_v128_load(source)); }
+	static Simd128Float32 make_load_first(const F* source, int count) noexcept { return simd_detail::load_first_lanes<Simd128Float32>(source, count); }
 	static Simd128Float32 make_from_int32(Simd128UInt32 i) { return Simd128Float32(wasm_f32x4_convert_i32x4(i.v)); }
 	template <int Scale = 1>
 	static Simd128Float32 make_gather(const float* base, Simd128Int32 indices) noexcept {

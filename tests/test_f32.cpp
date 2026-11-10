@@ -913,6 +913,28 @@ bool run_float32_helper_test_for_type(const std::string& type_name, CpuInformati
     }
 
     {
+        // Unaligned by one element; the sentinels either side of the destination must survive the store.
+        float source[lanes + 2]{};
+        float destination[lanes + 2]{};
+        for (int i = 0; i < lanes + 2; ++i) {
+            source[i] = static_cast<float>(i) * 1.5f - 4.0f;
+            destination[i] = -99.0f;
+        }
+        const SimdType loaded = SimdType::make_load(source + 1);
+        loaded.store(destination + 1);
+        for (int lane = 0; lane < lanes; ++lane) {
+            if (!float_matches_exact(loaded.element(lane), source[lane + 1]) || !float_matches_exact(destination[lane + 1], source[lane + 1])) {
+                harness.add_result(test_name, false, "make_load/store mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+        if (destination[0] != -99.0f || destination[lanes + 1] != -99.0f) {
+            harness.add_result(test_name, false, "store wrote outside its lanes");
+            return false;
+        }
+    }
+
+    {
         alignas(UIntType) UIntType ints{};
         for (int lane = 0; lane < lanes; ++lane) {
             ints.set_element(lane, static_cast<uint32_t>(lane * 17 + 3));

@@ -139,6 +139,7 @@ struct FallbackFloat64 {
 	//*****Access Elements*****
 	F element(int) const { return v; }
 	void set_element(int, F value) { v = value; }
+	void store(F* destination) const noexcept { *destination = v; }
 	static constexpr int size_of_element() { return sizeof(double); }
 	static constexpr int number_of_elements() { return 1; }
 
@@ -164,6 +165,7 @@ struct FallbackFloat64 {
 	//*****Make Functions****
 	static FallbackFloat64 make_sequential(F first) { return FallbackFloat64(first); }
 	static FallbackFloat64 make_set1(F v) { return FallbackFloat64(v); }
+	static FallbackFloat64 make_load(const F* source) noexcept { return FallbackFloat64(*source); }
 	template <int Scale = 1>
 	static FallbackFloat64 make_gather(const double* base, FallbackInt64 indices) noexcept {
 		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
@@ -651,6 +653,7 @@ struct Simd512Float64 {
 		std::memcpy(&v, lanes, sizeof(v));
 #endif
 	}
+	void store(F* destination) const noexcept { _mm512_storeu_pd(destination, v); }
 
 	//*****Addition Operators*****
 	Simd512Float64& operator+=(const Simd512Float64& rhs) noexcept { v = _mm512_add_pd(v, rhs.v); return *this; }
@@ -674,6 +677,7 @@ struct Simd512Float64 {
 	//*****Make Functions****
 	static Simd512Float64 make_sequential(F first) { return Simd512Float64(_mm512_set_pd(first + 7.0f, first + 6.0f, first + 5.0f, first + 4.0f, first + 3.0f, first + 2.0f, first + 1.0f, first)); }
 	static Simd512Float64 make_set1(F v) { return _mm512_set1_pd(v); }
+	static Simd512Float64 make_load(const F* source) noexcept { return Simd512Float64(_mm512_loadu_pd(source)); }
 	template <int Scale = 1>
 	static Simd512Float64 make_gather(const double* base, Simd512Int64 indices) noexcept {
 		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
@@ -938,6 +942,7 @@ struct Simd256Float64 {
 	//*****Access Elements*****
 	F element(int i) const { return mt::simd_detail_f64::lane_get(v, i); }
 	void set_element(int i, F value) { mt::simd_detail_f64::lane_set(v, i, value); }
+	void store(F* destination) const noexcept { _mm256_storeu_pd(destination, v); }
 
 	//*****Addition Operators*****
 	Simd256Float64& operator+=(const Simd256Float64& rhs) noexcept { v = _mm256_add_pd(v, rhs.v); return *this; }
@@ -962,6 +967,7 @@ struct Simd256Float64 {
 	//*****Make Functions****
 	static Simd256Float64 make_sequential(F first) { return Simd256Float64(_mm256_set_pd(first + 3.0f, first + 2.0f, first + 1.0f, first)); }
 	static Simd256Float64 make_set1(F v) { return _mm256_set1_pd(v); }
+	static Simd256Float64 make_load(const F* source) noexcept { return Simd256Float64(_mm256_loadu_pd(source)); }
 	template <int Scale = 1>
 	static Simd256Float64 make_gather(const double* base, Simd256Int64 indices) noexcept {
 		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
@@ -1237,6 +1243,7 @@ struct Simd128Float64 {
 	//*****Access Elements*****
 	F element(int i)  const { return mt::simd_detail_f64::lane_get(v, i); }
 	void set_element(int i, F value) { v = mt::simd_detail_f64::lane_set(v, i, value); }
+	void store(F* destination) const noexcept { _mm_storeu_pd(destination, v); }
 
 	//*****Addition Operators*****
 	Simd128Float64& operator+=(const Simd128Float64& rhs) noexcept { v = _mm_add_pd(v, rhs.v); return *this; } //SSE1
@@ -1261,6 +1268,7 @@ struct Simd128Float64 {
 	//*****Make Functions****
 	static Simd128Float64 make_sequential(F first) { return Simd128Float64(_mm_set_pd(first + 1.0f, first)); }
 	static Simd128Float64 make_set1(F v) { return Simd128Float64(_mm_set1_pd(v)); }
+	static Simd128Float64 make_load(const F* source) noexcept { return Simd128Float64(_mm_loadu_pd(source)); }
 	template <int Scale = 1>
 	static Simd128Float64 make_gather(const double* base, Simd128Int64 indices) noexcept {
 		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");
@@ -1638,6 +1646,7 @@ struct Simd128Float64 {
 
 	F element(int i) const { return mt::simd_wasm_detail::lane_get<double, 2>(v, i); }
 	void set_element(int i, F value) { v = mt::simd_wasm_detail::lane_set<double, 2>(v, i, value); }
+	void store(F* destination) const noexcept { wasm_v128_store(destination, v); }
 
 	Simd128Float64& operator+=(const Simd128Float64& rhs) noexcept { v = wasm_f64x2_add(v, rhs.v); return *this; }
 	Simd128Float64& operator+=(double rhs) noexcept { v = wasm_f64x2_add(v, Simd128Float64(rhs).v); return *this; }
@@ -1651,6 +1660,7 @@ struct Simd128Float64 {
 
 	static Simd128Float64 make_sequential(F first) { return Simd128Float64(mt::simd_wasm_detail::make_sequential<double, 2>(first)); }
 	static Simd128Float64 make_set1(F value) { return Simd128Float64(mt::simd_wasm_detail::splat<double>(value)); }
+	static Simd128Float64 make_load(const F* source) noexcept { return Simd128Float64(wasm_v128_load(source)); }
 	template <int Scale = 1>
 	static Simd128Float64 make_gather(const double* base, Simd128Int64 indices) noexcept {
 		static_assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8, "Gather scale must be 1, 2, 4, or 8.");

@@ -967,6 +967,28 @@ bool run_float64_helper_test_for_type(const std::string& type_name, CpuInformati
         }
     }
 
+    {
+        // Unaligned by one element; the sentinels either side of the destination must survive the store.
+        double source[lanes + 2]{};
+        double destination[lanes + 2]{};
+        for (int i = 0; i < lanes + 2; ++i) {
+            source[i] = static_cast<double>(i) * 1.5 - 4.0;
+            destination[i] = -99.0;
+        }
+        const SimdType loaded = SimdType::make_load(source + 1);
+        loaded.store(destination + 1);
+        for (int lane = 0; lane < lanes; ++lane) {
+            if (!double_matches_exact(loaded.element(lane), source[lane + 1]) || !double_matches_exact(destination[lane + 1], source[lane + 1])) {
+                harness.add_result(test_name, false, "make_load/store mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+        if (destination[0] != -99.0 || destination[lanes + 1] != -99.0) {
+            harness.add_result(test_name, false, "store wrote outside its lanes");
+            return false;
+        }
+    }
+
     if constexpr (requires (BitUintType ints) { SimdType::make_from_uints_52bits(ints); }) {
         alignas(BitUintType) BitUintType ints{};
         constexpr uint64_t kMask52 = 0x000fffffffffffffull;

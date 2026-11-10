@@ -722,7 +722,30 @@ bool run_int32_metadata_test_for_type(const std::string& type_name, CpuInformati
         }
     }
 
-    harness.add_result(test_name, true, "make_sequential, make_set1, and size_of_element() matched");
+    {
+        // Unaligned by one element; the sentinels either side of the destination must survive the store.
+        constexpr int lanes = SimdType::number_of_elements();
+        int32_t source[lanes + 2]{};
+        int32_t destination[lanes + 2]{};
+        for (int i = 0; i < lanes + 2; ++i) {
+            source[i] = static_cast<int32_t>(i) * 3 - 7;
+            destination[i] = -99;
+        }
+        const SimdType loaded = SimdType::make_load(source + 1);
+        loaded.store(destination + 1);
+        for (int lane = 0; lane < lanes; ++lane) {
+            if (loaded.element(lane) != source[lane + 1] || destination[lane + 1] != source[lane + 1]) {
+                harness.add_result(test_name, false, "make_load/store mismatch, lane " + std::to_string(lane));
+                return false;
+            }
+        }
+        if (destination[0] != -99 || destination[lanes + 1] != -99) {
+            harness.add_result(test_name, false, "store wrote outside its lanes");
+            return false;
+        }
+    }
+
+    harness.add_result(test_name, true, "make_sequential, make_set1, make_load/store, and size_of_element() matched");
     return true;
 }
 

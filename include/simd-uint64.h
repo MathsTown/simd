@@ -119,10 +119,12 @@ struct FallbackUInt64 {
 	static constexpr int number_of_elements() { return 1; }	
 	F element(int) const { return v; }
 	void set_element(int, F value) { v = value; }
+	void store(F* destination) const noexcept { *destination = v; }
 
 	//*****Make Functions****
 	static FallbackUInt64 make_sequential(uint64_t first) { return FallbackUInt64(first); }
 	static FallbackUInt64 make_set1(uint64_t v) { return FallbackUInt64(v); }
+	static FallbackUInt64 make_load(const F* source) noexcept { return FallbackUInt64(*source); }
 
 
 	//*****Addition Operators*****
@@ -357,12 +359,14 @@ struct Simd512UInt64 {
 	//*****Elements*****
 	F element(int i) const { return mt::simd_detail_u64::lane_get(v, i); }
 	void set_element(int i, F value) { mt::simd_detail_u64::lane_set(v, i, value); }
+	void store(F* destination) const noexcept { _mm512_storeu_si512(destination, v); }
 	static constexpr int size_of_element() { return sizeof(uint64_t); }
 	static constexpr int number_of_elements() { return 8; }
 
 	//*****Make Functions****
 	static Simd512UInt64 make_sequential(uint64_t first) { return Simd512UInt64(_mm512_set_epi64(first + 7, first + 6, first + 5, first + 4, first + 3, first + 2, first + 1, first)); }
 	static Simd512UInt64 make_set1(uint64_t v) { return Simd512UInt64(_mm512_set1_epi64(static_cast<long long>(v))); }
+	static Simd512UInt64 make_load(const F* source) noexcept { return Simd512UInt64(_mm512_loadu_si512(source)); }
 
 
 	//*****Addition Operators*****
@@ -493,6 +497,7 @@ struct Simd256UInt64 {
 	static constexpr int number_of_elements() { return 4; }	
 	F element(int i) const { return mt::simd_detail_u64::lane_get(v, i); }
 	void set_element(int i, F value) { mt::simd_detail_u64::lane_set(v, i, value); }
+	void store(F* destination) const noexcept { _mm256_storeu_si256(reinterpret_cast<__m256i*>(destination), v); }
 	
 
 	//*****Addition Operators*****
@@ -544,6 +549,7 @@ struct Simd256UInt64 {
 	//*****Make Functions****
 	static Simd256UInt64 make_sequential(uint64_t first) noexcept { return Simd256UInt64(_mm256_set_epi64x(first + 3, first + 2, first + 1, first)); }
 	static Simd256UInt64 make_set1(uint64_t v) noexcept { return Simd256UInt64(_mm256_set1_epi64x(static_cast<long long>(v))); }
+	static Simd256UInt64 make_load(const F* source) noexcept { return Simd256UInt64(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(source))); }
 	
 
 
@@ -692,6 +698,7 @@ struct Simd128UInt64 {
 	//*****Elements*****
 	F element(int i) const { return mt::simd_detail_u64::lane_get(v, i); }
 	void set_element(int i, F value) { v = mt::simd_detail_u64::lane_set(v, i, value); }
+	void store(F* destination) const noexcept { _mm_storeu_si128(reinterpret_cast<__m128i*>(destination), v); }
 
 
 	//*****Addition Operators*****
@@ -735,6 +742,7 @@ struct Simd128UInt64 {
 	//*****Make Functions****
 	static Simd128UInt64 make_sequential(uint64_t first) noexcept { return Simd128UInt64(_mm_set_epi64x(first + 1, first)); }
 	static Simd128UInt64 make_set1(uint64_t v) noexcept { return Simd128UInt64(_mm_set1_epi64x(static_cast<long long>(v))); }
+	static Simd128UInt64 make_load(const F* source) noexcept { return Simd128UInt64(_mm_loadu_si128(reinterpret_cast<const __m128i*>(source))); }
 
 	private:
 
@@ -929,8 +937,10 @@ struct Simd128UInt64 {
 	static constexpr int number_of_elements() { return 2; }
 	F element(int i) const { return mt::simd_wasm_detail::lane_get<uint64_t, 2>(v, i); }
 	void set_element(int i, F value) { v = mt::simd_wasm_detail::lane_set<uint64_t, 2>(v, i, value); }
+	void store(F* destination) const noexcept { wasm_v128_store(destination, v); }
 	static Simd128UInt64 make_sequential(uint64_t first) noexcept { return Simd128UInt64(mt::simd_wasm_detail::make_sequential<uint64_t, 2>(first)); }
 	static Simd128UInt64 make_set1(uint64_t value) noexcept { return Simd128UInt64(mt::simd_wasm_detail::splat<uint64_t>(value)); }
+	static Simd128UInt64 make_load(const F* source) noexcept { return Simd128UInt64(wasm_v128_load(source)); }
 
 	Simd128UInt64& operator+=(const Simd128UInt64& rhs) noexcept { v = wasm_i64x2_add(v, rhs.v); return *this; }
 	Simd128UInt64& operator+=(uint64_t rhs) noexcept { v = wasm_i64x2_add(v, make_set1(rhs).v); return *this; }
